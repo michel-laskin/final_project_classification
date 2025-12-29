@@ -40,4 +40,6 @@ verification_plot.png
 test_tensor_compatibility.py
 test_windowing.py
 
+# Generated output files
+hrv_analysis_report.html
 
