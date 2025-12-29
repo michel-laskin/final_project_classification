@@ -121,13 +121,15 @@ class FusionModel(nn.Module):
         # TCN output is [Batch, Channels, Seq_Len] -> we want to classify every time step
         self.classifier = nn.Linear(tcn_channels[-1], num_classes)
 
-    def forward(self, inputs):
+    def forward(self, inputs, return_activations=False):
         """
         Args:
             inputs (dict): Dictionary of tensors, keys matching input_dims.
                            Each tensor shape: [batch, seq_len, distinct_feat_dim]
+            return_activations (bool): If True, returns a dictionary of internal activations.
         """
         encoded_feats = []
+        activations = {}
         
         # 1. Input Grouping & Parallel Encoding
         # Sort keys to ensure deterministic order if dict is unordered (Python 3.7+ preserves insertion order, but safe practice)
@@ -142,9 +144,15 @@ class FusionModel(nn.Module):
             out = self.encoders[name](x) # [batch, seq_len, embedding_dim]
             encoded_feats.append(out)
             
+            if return_activations:
+                activations[f'encoder_{name}'] = out
+            
         # 2. Fusion Layer
         # Concatenate along the feature dimension (dim=2)
         fused = torch.cat(encoded_feats, dim=2) # [batch, seq_len, total_fusion_dim]
+        
+        if return_activations:
+            activations['fused'] = fused
         
         # 3. Temporal Modeling (TCN)
         # TCN expects [batch, channels, seq_len]
@@ -156,4 +164,6 @@ class FusionModel(nn.Module):
         tcn_out_t = tcn_out.transpose(1, 2)
         logits = self.classifier(tcn_out_t) # [batch, seq_len, num_classes]
         
+        if return_activations:
+            return logits, activations
         return logits
