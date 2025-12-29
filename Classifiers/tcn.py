@@ -2,23 +2,8 @@ import torch
 import torch.nn as nn
 from torch.nn.utils import weight_norm
 
-class FeatureEncoder(nn.Module):
-    """
-    Generic feature encoder block (MLP-based) to project features to a fixed dimension.
-    Pipeline: Linear -> LayerNorm -> GELU -> Dropout
-    """
-    def __init__(self, input_dim, output_dim, dropout=0.1):
-        super(FeatureEncoder, self).__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, output_dim),
-            nn.LayerNorm(output_dim),
-            nn.GELU(),
-            nn.Dropout(dropout)
-        )
+from .feature_encoder import FeatureEncoder
 
-    def forward(self, x):
-        # x shape: [batch, seq_len, input_dim]
-        return self.net(x)
 
 class Chomp1d(nn.Module):
     def __init__(self, chomp_size):
@@ -27,6 +12,7 @@ class Chomp1d(nn.Module):
 
     def forward(self, x):
         return x[:, :, :-self.chomp_size].contiguous()
+
 
 class TemporalBlock(nn.Module):
     def __init__(self, n_inputs, n_outputs, kernel_size, stride, dilation, padding, dropout=0.2):
@@ -64,6 +50,7 @@ class TemporalBlock(nn.Module):
         res = x if self.downsample is None else self.downsample(x)
         return self.relu(out + res)
 
+
 class TemporalConvNet(nn.Module):
     def __init__(self, num_inputs, num_channels, kernel_size=2, dropout=0.2):
         super(TemporalConvNet, self).__init__()
@@ -85,6 +72,7 @@ class TemporalConvNet(nn.Module):
     def forward(self, x):
         # x shape for TCN: [batch, channels, seq_len]
         return self.network(x)
+
 
 class FusionModel(nn.Module):
     def __init__(self, input_dims, embedding_dim, tcn_channels, num_classes=2, dropout=0.1):
