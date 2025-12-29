@@ -4,6 +4,11 @@ import nolds
 from scipy.stats import skew, kurtosis
 import pywt  # Wavelet library
 from matplotlib.patches import Ellipse
+import torch
+
+# PyTorch is now required for tensor outputs
+TORCH_AVAILABLE = True
+import nolds
 
 class FeatureExtractor:
     """
@@ -200,6 +205,31 @@ class FeatureExtractor:
         return results
 
 
+def _features_dict_to_tensor(features_dict: dict, device: str = 'cpu'):
+    """
+    Convert feature dictionary to tensor format compatible with FeatureEncoder.
+    
+    Args:
+        features_dict: Dictionary mapping feature names to values.
+        device: Target device ('cpu' or 'cuda').
+        
+    Returns:
+        Tensor of shape [1, 1, num_features].
+    """
+    if not TORCH_AVAILABLE:
+        raise RuntimeError("PyTorch is not available. Cannot convert to tensor.")
+    
+    # Sort keys for deterministic ordering
+    feature_names = sorted(features_dict.keys())
+    feature_values = [float(features_dict[k]) for k in feature_names]
+    
+    # Create tensor and add batch + sequence dimensions
+    tensor = torch.tensor(feature_values, dtype=torch.float32, device=device)
+    tensor = tensor.unsqueeze(0).unsqueeze(0)  # [num_features] -> [1, 1, num_features]
+    
+    return tensor
+
+
 class HRVFeatureExtractor:
     """
     A class for extracting time-domain and geometric HRV features from RR intervals.
@@ -361,15 +391,16 @@ class HRVFeatureExtractor:
         return sd1, sd2
     
     @staticmethod
-    def calculate_statistical_features(mse_values: np.ndarray) -> dict:
+    def calculate_statistical_features(mse_values: np.ndarray, device: str = 'cpu'):
         """
         Calculate statistical features from MSE values.
         
         Args:
             mse_values: Array of multiscale entropy values.
+            device: Device for tensor ('cpu' or 'cuda').
             
         Returns:
-            Dictionary of statistical features.
+            Tensor of shape [1, 1, 9] containing statistical features.
         """
         mean_val = np.mean(mse_values)  # mu_x
         median_val = np.median(mse_values)  # x_bar
@@ -398,24 +429,33 @@ class HRVFeatureExtractor:
             "Stat_Norm_Diff2": norm_gamma_x
         }
         
-        return features
+        return _features_dict_to_tensor(features, device)
     
     @staticmethod
-    def calculate_wavelet_features(mse_values: np.ndarray) -> dict:
+    def calculate_wavelet_features(mse_values: np.ndarray, fixed_scales: int = 10, device: str = 'cpu'):
         """
         Calculate wavelet features from MSE values using Continuous Wavelet Transform.
         
         Args:
             mse_values: Array of multiscale entropy values.
+            fixed_scales: Number of scales to use (default 10 for 20 features).
+            device: Device for tensor ('cpu' or 'cuda').
             
         Returns:
-            Dictionary of wavelet features (mean and std for each scale).
+            Tensor of shape [1, 1, 2*fixed_scales] containing wavelet features.
         """
+        # Pad or truncate to fixed length for consistent output dimensions
+        if len(mse_values) < fixed_scales:
+            padded_mse = np.pad(mse_values, (0, fixed_scales - len(mse_values)), 
+                               mode='constant', constant_values=0)
+        else:
+            padded_mse = mse_values[:fixed_scales]
+        
         # Define scales for the CWT
-        scales = np.arange(1, len(mse_values) + 1)
+        scales = np.arange(1, fixed_scales + 1)
         
         # Performing Continuous Wavelet Transform with Morlet wavelet
-        coeffs, freqs = pywt.cwt(mse_values, scales, 'morl')
+        coeffs, freqs = pywt.cwt(padded_mse, scales, 'morl')
         
         features = {}
         
@@ -431,9 +471,9 @@ class HRVFeatureExtractor:
             features[f"Wavelet_Scale{scale_num}_Mean"] = mean_c
             features[f"Wavelet_Scale{scale_num}_Std"] = std_c
         
-        return features
+        return _features_dict_to_tensor(features, device)
     
-    def extract_all_features(self, signal: np.ndarray, peak_indices: np.ndarray, t_axis: np.ndarray) -> tuple:
+    def extract_all_features(self, signal: np.ndarray, peak_indices: np.ndarray, t_axis: np.ndarray, device: str = 'cpu'):
         """
         Extract all features from a signal including HRV, statistical, and wavelet features.
         
@@ -441,9 +481,12 @@ class HRVFeatureExtractor:
             signal: The input signal array.
             peak_indices: Array of indices where peaks (R-peaks) are detected.
             t_axis: Time axis array corresponding to the signal.
+            device: Device for tensor ('cpu' or 'cuda').
             
         Returns:
-            Tuple of (all_features dict, rr_intervals_ms array).
+            Tuple of (all_features_tensor, rr_intervals_ms):
+                - all_features_tensor: Tensor of shape [1, 1, total_features]
+                - rr_intervals_ms: Array of RR intervals in milliseconds
         """
         # Calculate HRV (Time Domain)
         peak_times = t_axis[peak_indices]
@@ -464,16 +507,26 @@ class HRVFeatureExtractor:
             "Mean_RR": mean_rr
         }
         
-        # Calculate statistical features
-        stat_features = self.calculate_statistical_features(signal)
+        # Compute MSE from RR intervals for statistical and wavelet feature extraction
+        # Need to instantiate FeatureExtractor to compute MSE
+        from processing.feature_extraction import FeatureExtractor
+        entropy_extractor = FeatureExtractor()
+        mse_values = entropy_extractor.multiscale_entropy(rr_intervals_ms)
         
-        # Calculate Wavelet features
-        wavelet_features = self.calculate_wavelet_features(signal)
+        # Calculate statistical features from MSE (not raw signal)
+        stat_features_tensor = self.calculate_statistical_features(mse_values, device=device)
         
-        # Merge all dictionaries into one large dictionary
-        all_features = {**hrv_features, **stat_features, **wavelet_features}
+        # Calculate Wavelet features from MSE (not raw signal)
+        wavelet_features_tensor = self.calculate_wavelet_features(mse_values, device=device)
         
-        return all_features, rr_intervals_ms
+        # Convert HRV features dict to tensor
+        hrv_features_tensor = _features_dict_to_tensor(hrv_features, device=device)
+        
+        # Concatenate all feature tensors along the feature dimension (dim=2)
+        # Each tensor is [1, 1, num_features], concatenate to [1, 1, total_features]
+        all_features_tensor = torch.cat([hrv_features_tensor, stat_features_tensor, wavelet_features_tensor], dim=2)
+        
+        return all_features_tensor, rr_intervals_ms
 
 
 # =============================================================================
@@ -520,4 +573,4 @@ def calculate_mse_wavelet_features(mse_values):
 
 # Plotting functions moved to processing.plotting module
 # Import them here for backward compatibility
-from processing.plotting import plot_mse, plot_mse_heatmap, plot_mse_vs_scale
+from visualizations.plotting import plot_mse, plot_mse_heatmap, plot_mse_vs_scale

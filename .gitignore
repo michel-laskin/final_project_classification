@@ -37,3 +37,7 @@ Thumbs.db
 # Verification files
 verification_script.py
 verification_plot.png
+test_tensor_compatibility.py
+test_windowing.py
+
+
