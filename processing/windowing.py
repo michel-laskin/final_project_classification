@@ -276,6 +276,111 @@ def visualize_windows(
     plt.show()
 
 
+def create_hrv_windows(
+    hrv_series: np.ndarray,
+    window_size: int = 200,
+    overlap: int = 20,
+    label: int = 0
+) -> List[Dict]:
+    """
+    Divide HRV time series (RR intervals) into overlapping windows.
+    
+    Args:
+        hrv_series: Array of RR intervals (HRV time series)
+        window_size: Number of RR intervals per window (default: 200)
+        overlap: Number of overlapping RR intervals between windows (default: 20)
+        label: Label for all windows (0 for non-AF, 1 for AF)
+        
+    Returns:
+        List of dictionaries, each containing:
+            - 'hrv_window': HRV values for this window
+            - 'label': Label (0 or 1)
+            - 'window_idx': Window index
+            - 'start_idx': Start index in original HRV series
+            - 'end_idx': End index in original HRV series
+    """
+    if len(hrv_series) < window_size:
+        # Not enough data for even one window
+        return []
+    
+    step_size = window_size - overlap
+    
+    # Ensure minimum step size
+    if step_size < 1:
+        step_size = 1
+    
+    windows = []
+    window_idx = 0
+    start_idx = 0
+    
+    # Create windows
+    while start_idx + window_size <= len(hrv_series):
+        end_idx = start_idx + window_size
+        
+        window_info = {
+            'hrv_window': hrv_series[start_idx:end_idx],
+            'label': label,
+            'window_idx': window_idx,
+            'start_idx': start_idx,
+            'end_idx': end_idx,
+            'window_size': window_size
+        }
+        windows.append(window_info)
+        window_idx += 1
+        
+        # Move to next window
+        start_idx += step_size
+    
+    return windows
+
+
+def split_windows(
+    windows: List[Dict],
+    train_ratio: float = 0.6,
+    val_ratio: float = 0.2,
+    test_ratio: float = 0.2,
+    shuffle: bool = True,
+    random_seed: int = 42
+) -> Tuple[List[Dict], List[Dict], List[Dict]]:
+    """
+    Split windows into train, validation, and test sets.
+    
+    Args:
+        windows: List of window dictionaries
+        train_ratio: Ratio of windows for training
+        val_ratio: Ratio of windows for validation
+        test_ratio: Ratio of windows for testing
+        shuffle: Whether to shuffle windows before splitting
+        random_seed: Random seed for reproducibility
+        
+    Returns:
+        Tuple of (train_windows, val_windows, test_windows)
+    """
+    if abs(train_ratio + val_ratio + test_ratio - 1.0) > 1e-6:
+        raise ValueError("train_ratio + val_ratio + test_ratio must equal 1.0")
+    
+    if len(windows) == 0:
+        return [], [], []
+    
+    # Shuffle if requested
+    if shuffle:
+        np.random.seed(random_seed)
+        indices = np.random.permutation(len(windows))
+        windows = [windows[i] for i in indices]
+    
+    # Calculate split indices
+    n_total = len(windows)
+    n_train = int(n_total * train_ratio)
+    n_val = int(n_total * val_ratio)
+    
+    # Split windows
+    train_windows = windows[:n_train]
+    val_windows = windows[n_train:n_train + n_val]
+    test_windows = windows[n_train + n_val:]
+    
+    return train_windows, val_windows, test_windows
+
+
 def visualize_feature_heatmap(
     features_tensor: torch.Tensor,
     window_metadata: List[Dict],

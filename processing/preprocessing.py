@@ -1,5 +1,5 @@
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt  # Not needed for classification pipeline
 from scipy.signal import butter, filtfilt, find_peaks
 from scipy.ndimage import gaussian_filter1d
 

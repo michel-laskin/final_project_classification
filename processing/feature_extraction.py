@@ -1,9 +1,9 @@
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt  # Not needed for classification pipeline
 import nolds
 from scipy.stats import skew, kurtosis
 import pywt  # Wavelet library
-from matplotlib.patches import Ellipse
+# from matplotlib.patches import Ellipse  # Not needed for classification pipeline
 import torch
 
 # PyTorch is now required for tensor outputs
@@ -136,7 +136,7 @@ class FeatureExtractor:
         r = self.samp_en_r * np.std(rr_intervals)
         
         return nolds.sampen(rr_intervals, emb_dim=m, tolerance=r)
-    
+
     def multiscale_entropy(self, rr_intervals: np.ndarray) -> np.ndarray:
         """
         Calculate multiscale entropy for RR intervals.
@@ -572,5 +572,6 @@ def calculate_mse_wavelet_features(mse_values):
 
 
 # Plotting functions moved to processing.plotting module
-# Import them here for backward compatibility
-from visualizations.plotting import plot_mse, plot_mse_heatmap, plot_mse_vs_scale
+# Import them here        
+# Not needed for classification pipeline - commenting out
+# from visualizations.plotting import plot_mse, plot_mse_heatmap, plot_mse_vs_scale

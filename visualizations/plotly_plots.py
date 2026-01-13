@@ -308,7 +308,7 @@ def plot_interpolated_filtered_signal(interpolated_filtered_signal) -> tuple:
         name='Filtered Signal'
     ))
     fig1.update_layout(
-        title="Filtered ECG Signal",
+        title="Filtered PPG Signal",
         xaxis_title="Samples",
         yaxis_title="Amplitude",
         template="plotly_dark"

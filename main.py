@@ -839,46 +839,720 @@ class HRVPipeline:
         return results
 
 
+class AFClassificationPipeline:
+    """
+    Complete pipeline for AF classification from PPG recordings.
+    """
+    
+    def __init__(self, config=None):
+        """Initialize the classification pipeline."""
+        # Default configuration
+        self.config = {
+            # Signal processing
+            "sampling_freq": 125,  # MIMIC-PERFORM data is sampled at 125 Hz
+            "averaging_type": "Gaussian",
+            "gaussian_sigma": 2,
+            "low_threshold": 0.5,
+            "high_threshold": 5.0,
+            "filter_order": 4,
+            "min_rr_sec_human": 0.3,
+            
+            # HRV windowing
+            "hrv_window_size": 200,
+            "hrv_overlap": 20,
+            
+            # Data split
+            "train_ratio": 0.6,
+            "val_ratio": 0.2,
+            "test_ratio": 0.2,
+            
+            # Model architecture (moderate regularization - balanced approach)
+            "embedding_dim": 128,
+            "tcn_channels": [64, 64],  # Moderate size - between [32,64] and [64,64,128]
+            "tcn_kernel_size": 3,
+            "dropout": 0.2,  # Moderate dropout - between 0.1 and 0.4
+            "num_classes": 2,
+            
+            # Training
+            "batch_size": 32,
+            "epochs": 100,
+            "learning_rate": 0.001,  # Standard learning rate
+            "weight_decay": 0.001,  # Light L2 regularization (10x less than before)
+            "early_stopping_patience": 10,
+            
+            # Device
+            "device": "cuda" if torch.cuda.is_available() else "cpu"
+        }
+        
+        if config is not None:
+            self.config.update(config)
+        
+        # Initialize feature extractor
+        self.hrv_extractor = HRVFeatureExtractor(params={
+            "file_path": "",
+            "d": 8,
+            "p": 3,
+            "x": 50.0,
+            "hz": self.config["sampling_freq"]
+        })
+        
+        # Models (will be initialized later)
+        self.model = None
+        
+        # Dictionary to collect all figures for HTML
+        self.figures = {}
+        
+        print(f"AF Classification Pipeline initialized on device: {self.config['device']}")
+    
+    def load_all_recordings(self, recordings_dir):
+        """Load all CSV files and assign labels based on filename."""
+        print(f"\n{'='*60}")
+        print("LOADING DATA")
+        print(f"{'='*60}")
+        
+        recordings_path = Path(recordings_dir)
+        csv_files = sorted(list(recordings_path.glob("*.csv")))
+        
+        if len(csv_files) == 0:
+            raise ValueError(f"No CSV files found in {recordings_path}")
+        
+        files_data = []
+        af_count = 0
+        non_af_count = 0
+        
+        for csv_file in csv_files:
+            filename = csv_file.name
+            
+            # Determine label from filename
+            # Check for '_non_af_' FIRST, since it contains '_af_' substring
+            if '_non_af_' in filename.lower():
+                label = 0
+                non_af_count += 1
+            elif '_af_' in filename.lower():
+                label = 1
+                af_count += 1
+            else:
+                print(f"  Warning: Could not determine label for {filename}, skipping...")
+                continue
+            
+            files_data.append({
+                'filepath': csv_file,
+                'filename': filename,
+                'label': label
+            })
+        
+        print(f"Loaded {len(files_data)} files:")
+        print(f"  - AF files: {af_count}")
+        print(f"  - Non-AF files: {non_af_count}")
+        
+        return files_data
+    
+    def process_file_to_hrv(self, filepath):
+        """Process a single CSV file to extract HRV time series."""
+        # Load CSV
+        df = pd.read_csv(filepath)
+        
+        # Extract Time and PPG columns
+        if 'Time' not in df.columns or 'PPG' not in df.columns:
+            raise ValueError(f"CSV file must contain 'Time' and 'PPG' columns. Found: {df.columns.tolist()}")
+        
+        time = df['Time'].values
+        ecg_signal = df['PPG'].values
+        
+        # Preprocess signal
+        averaged_signal = average_filter(ecg_signal, self.config)
+        filtered_signal = bandpass_filter(averaged_signal, self.config)
+        peaks = detect_r_peaks(filtered_signal, self.config)
+        
+        # Extract RR intervals (HRV time series)
+        rr_intervals = extract_rr(peaks, self.config)
+        rr_intervals_ms = rr_intervals * 1000  # Convert to milliseconds
+        
+        return {
+            'time': time,
+            'ppg_signal': ecg_signal,
+            'filtered_signal': filtered_signal,
+            'peaks': peaks,
+            'rr_intervals_ms': rr_intervals_ms
+        }
+    
+    def create_dataset(self, files_data):
+        """Create windowed dataset from all files with FILE-LEVEL split."""
+        from processing.windowing import create_hrv_windows
+        import numpy as np
+        
+        print(f"\n{'='*60}")
+        print("CREATING HRV WINDOWED DATASET")
+        print(f"{'='*60}")
+        
+        # CRITICAL: Split files FIRST, then create windows
+        # This prevents data leakage where windows from same file appear in train/val/test
+        
+        np.random.seed(42)  # For reproducibility
+        indices = np.random.permutation(len(files_data))
+        
+        n_files = len(files_data)
+        n_train = int(n_files * self.config['train_ratio'])
+        n_val = int(n_files * self.config['val_ratio'])
+        
+        train_file_indices = indices[:n_train]
+        val_file_indices = indices[n_train:n_train + n_val]
+        test_file_indices = indices[n_train + n_val:]
+        
+        print(f"\nFile-level split (prevents data leakage):")
+        print(f"  - Train files: {len(train_file_indices)}")
+        print(f"  - Val files: {len(val_file_indices)}")
+        print(f"  - Test files: {len(test_file_indices)}")
+        
+        # Process each set separately
+        train_windows = []
+        val_windows = []
+        test_windows = []
+        file_stats = []
+        
+        for i, file_info in enumerate(files_data):
+            print(f"\nProcessing {i+1}/{len(files_data)}: {file_info['filename']}")
+            
+            # Extract HRV
+            data = self.process_file_to_hrv(file_info['filepath'])
+            hrv_series = data['rr_intervals_ms']
+            
+            print(f"  HRV length: {len(hrv_series)} intervals")
+            
+            # Create windows
+            windows = create_hrv_windows(
+                hrv_series=hrv_series,
+                window_size=self.config['hrv_window_size'],
+                overlap=self.config['hrv_overlap'],
+                label=file_info['label']
+            )
+            
+            print(f"  Created {len(windows)} windows")
+            
+            # Store file metadata
+            file_stats.append({
+                'filename': file_info['filename'],
+                'label': file_info['label'],
+                'hrv_length': len(hrv_series),
+                'num_windows': len(windows),
+                'num_peaks': len(data['peaks'])
+            })
+            
+            # Add file identifier to each window
+            for window in windows:
+                window['source_file'] = file_info['filename']
+                window['file_label'] = file_info['label']
+            
+            # Add to appropriate set based on file index
+            if i in train_file_indices:
+                train_windows.extend(windows)
+            elif i in val_file_indices:
+                val_windows.extend(windows)
+            else:  # test
+                test_windows.extend(windows)
+        
+        print(f"\n{'='*60}")
+        print(f"Dataset created with FILE-LEVEL split:")
+        
+        # Count windows by label in each set
+        train_af = sum(1 for w in train_windows if w['label'] == 1)
+        train_non_af = sum(1 for w in train_windows if w['label'] == 0)
+        val_af = sum(1 for w in val_windows if w['label'] == 1)
+        val_non_af = sum(1 for w in val_windows if w['label'] == 0)
+        test_af = sum(1 for w in test_windows if w['label'] == 1)
+        test_non_af = sum(1 for w in test_windows if w['label'] == 0)
+        
+        print(f"  - Train: {len(train_windows)} windows (AF:{train_af}, Non-AF:{train_non_af})")
+        print(f"  - Val: {len(val_windows)} windows (AF:{val_af}, Non-AF:{val_non_af})")
+        print(f"  - Test: {len(test_windows)} windows (AF:{test_af}, Non-AF:{test_non_af})")
+        
+        return {
+            'train_windows': train_windows,
+            'val_windows': val_windows,
+            'test_windows': test_windows,
+            'file_stats': file_stats
+        }
+    
+    def extract_features_from_windows(self, windows, verbose=True):
+        """Extract features from HRV windows."""
+        from scipy.stats import skew, kurtosis
+        import numpy as np
+        import torch
+        
+        if verbose:
+            print(f"\nExtracting features from {len(windows)} windows...")
+        
+        features_list = []
+        labels_list = []
+        
+        for i, window in enumerate(windows):
+            hrv_window = window['hrv_window']
+            
+            # We need to extract features from the HRV window
+            # Create dummy signal and peaks for the feature extractor
+            # The HRV window IS the RR intervals, so we can compute features directly
+            
+            try:
+                # Compute features from RR intervals
+                features_dict = {}
+                
+                # Time-domain features
+                features_dict['mean_rr'] = np.mean(hrv_window)
+                features_dict['std_rr'] = np.std(hrv_window)
+                features_dict['sdnn'] = self.hrv_extractor.extract_SDRR(hrv_window)
+                features_dict['rmssd'] = self.hrv_extractor.extract_RMSSD(hrv_window)
+                features_dict['pnn50'] = self.hrv_extractor.extract_pNNX(hrv_window)
+                features_dict['median_rr'] = np.median(hrv_window)
+                features_dict['min_rr'] = np.min(hrv_window)
+                features_dict['max_rr'] = np.max(hrv_window)
+                features_dict['range_rr'] = np.max(hrv_window) - np.min(hrv_window)
+                
+                # Statistical features
+                features_dict['skewness'] = float(skew(hrv_window))
+                features_dict['kurtosis'] = float(kurtosis(hrv_window))
+                features_dict['cv'] = np.std(hrv_window) / np.mean(hrv_window) if np.mean(hrv_window) != 0 else 0
+                
+                # Convert to tensor
+                feature_values = list(features_dict.values())
+                features_tensor = torch.tensor(feature_values, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+                
+                features_list.append(features_tensor)
+                labels_list.append(window['label'])
+                
+            except Exception as e:
+                if verbose:
+                    print(f"  Warning: Failed to extract features from window {i}: {e}")
+                continue
+        
+        if len(features_list) == 0:
+            raise ValueError("Failed to extract features from any window")
+        
+        # Stack all features
+        all_features = torch.cat(features_list, dim=0)  # [num_windows, 1, num_features]
+        all_labels = torch.tensor(labels_list, dtype=torch.long)
+        
+        if verbose:
+            print(f"Feature extraction complete:")
+            print(f"  - Features shape: {all_features.shape}")
+            print(f"  - Labels shape: {all_labels.shape}")
+        
+        return all_features, all_labels
+    
+    def train_model(self, dataset):
+        """Train the FusionModel for classification."""
+        from Models.tcn import FusionModel
+        from scipy.stats import skew, kurtosis
+        
+        print(f"\n{'='*60}")
+        print("TRAINING MODEL")
+        print(f"{'='*60}")
+        
+        # Extract features from all datasets
+        print("\nExtracting features from training set...")
+        train_features, train_labels = self.extract_features_from_windows(dataset['train_windows'])
+        
+        print("\nExtracting features from validation set...")
+        val_features, val_labels = self.extract_features_from_windows(dataset['val_windows'])
+        
+        print("\nExtracting features from test set...")
+        test_features, test_labels = self.extract_features_from_windows(dataset['test_windows'])
+        
+        # Move to device
+        train_features = train_features.to(self.config['device'])
+        train_labels = train_labels.to(self.config['device'])
+        val_features = val_features.to(self.config['device'])
+        val_labels = val_labels.to(self.config['device'])
+        test_features = test_features.to(self.config['device'])
+        test_labels = test_labels.to(self.config['device'])
+        
+        # Get feature dimension
+        num_features = train_features.shape[2]
+        print(f"\nFeature dimension: {num_features}")
+        
+        # Initialize FusionModel
+        # FusionModel expects a dictionary of inputs, let's adapt it
+        # For simplicity, we'll use a single input source
+        input_dims = {'hrv_features': num_features}
+        
+        self.model = FusionModel(
+            input_dims=input_dims,
+            embedding_dim=self.config['embedding_dim'],
+            tcn_channels=self.config['tcn_channels'],
+            num_classes=self.config['num_classes'],
+            dropout=self.config['dropout']
+        ).to(self.config['device'])
+        
+        print(f"\nModel architecture:")
+        print(f"  - Input dim: {num_features}")
+        print(f"  - Embedding dim: {self.config['embedding_dim']}")
+        print(f"  - TCN channels: {self.config['tcn_channels']}")
+        print(f"  - Num classes: {self.config['num_classes']}")
+        
+        # Loss and optimizer
+        criterion = nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(
+            self.model.parameters(), 
+            lr=self.config['learning_rate'],
+            weight_decay=self.config.get('weight_decay', 0.01)  # Add L2 regularization
+        )
+        
+        # Training loop
+        print(f"\nStarting training for {self.config['epochs']} epochs...")
+        print(f"Batch size: {self.config['batch_size']}")
+        
+        history = {
+            'train_loss': [],
+            'train_acc': [],
+            'val_loss': [],
+            'val_acc': []
+        }
+        
+        best_val_acc = 0.0
+        patience_counter = 0
+        
+        for epoch in range(self.config['epochs']):
+            # Training
+            self.model.train()
+            train_loss = 0.0
+            train_correct = 0
+            train_total = 0
+            
+            # Create batches
+            num_train = len(train_features)
+            indices = torch.randperm(num_train)
+            
+            for batch_start in range(0, num_train, self.config['batch_size']):
+                batch_end = min(batch_start + self.config['batch_size'], num_train)
+                batch_indices = indices[batch_start:batch_end]
+                
+                batch_features = train_features[batch_indices]
+                batch_labels = train_labels[batch_indices]
+                
+                # Forward pass
+                # FusionModel expects dict input
+                inputs = {'hrv_features': batch_features}
+                outputs = self.model(inputs)  # [batch, seq_len, num_classes]
+                
+                # Take the last timestep's output
+                outputs = outputs[:, -1, :]  # [batch, num_classes]
+                
+                loss = criterion(outputs, batch_labels)
+                
+                # Backward pass
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                
+                # Statistics
+                train_loss += loss.item() * len(batch_labels)
+                _, predicted = torch.max(outputs, 1)
+                train_correct += (predicted == batch_labels).sum().item()
+                train_total += len(batch_labels)
+            
+            train_loss /= train_total
+            train_acc = train_correct / train_total
+            
+            # Validation
+            self.model.eval()
+            val_loss = 0.0
+            val_correct = 0
+            val_total = 0
+            
+            with torch.no_grad():
+                for batch_start in range(0, len(val_features), self.config['batch_size']):
+                    batch_end = min(batch_start + self.config['batch_size'], len(val_features))
+                    
+                    batch_features = val_features[batch_start:batch_end]
+                    batch_labels = val_labels[batch_start:batch_end]
+                    
+                    inputs = {'hrv_features': batch_features}
+                    outputs = self.model(inputs)[:, -1, :]
+                    
+                    loss = criterion(outputs, batch_labels)
+                    
+                    val_loss += loss.item() * len(batch_labels)
+                    _, predicted = torch.max(outputs, 1)
+                    val_correct += (predicted == batch_labels).sum().item()
+                    val_total += len(batch_labels)
+            
+            val_loss /= val_total
+            val_acc = val_correct / val_total
+            
+            # Save history
+            history['train_loss'].append(train_loss)
+            history['train_acc'].append(train_acc)
+            history['val_loss'].append(val_loss)
+            history['val_acc'].append(val_acc)
+            
+            # Print progress
+            if (epoch + 1) % 5 == 0 or epoch == 0:
+                print(f"Epoch [{epoch+1}/{self.config['epochs']}] "
+                      f"Train Loss: {train_loss:.4f} Train Acc: {train_acc:.4f} | "
+                      f"Val Loss: {val_loss:.4f} Val Acc: {val_acc:.4f}")
+            
+            # Early stopping
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                patience_counter = 0
+                # Save best model
+                torch.save(self.model.state_dict(), 'best_model.pth')
+            else:
+                patience_counter += 1
+                if patience_counter >= self.config['early_stopping_patience']:
+                    print(f"\nEarly stopping at epoch {epoch+1}")
+                    break
+        
+        # Load best model
+        self.model.load_state_dict(torch.load('best_model.pth'))
+        
+        # Evaluate on test set
+        print(f"\n{'='*60}")
+        print("EVALUATING ON TEST SET")
+        print(f"{'='*60}")
+        
+        self.model.eval()
+        test_correct = 0
+        test_total = 0
+        test_loss_total = 0.0
+        all_predictions = []
+        all_labels = []
+        
+        with torch.no_grad():
+            for batch_start in range(0, len(test_features), self.config['batch_size']):
+                batch_end = min(batch_start + self.config['batch_size'], len(test_features))
+                
+                batch_features = test_features[batch_start:batch_end]
+                batch_labels = test_labels[batch_start:batch_end]
+                
+                inputs = {'hrv_features': batch_features}
+                outputs = self.model(inputs)[:, -1, :]
+                
+                # Calculate test loss
+                loss = criterion(outputs, batch_labels)
+                test_loss_total += loss.item() * len(batch_labels)
+                
+                _, predicted = torch.max(outputs, 1)
+                test_correct += (predicted == batch_labels).sum().item()
+                test_total += len(batch_labels)
+                
+                all_predictions.extend(predicted.cpu().numpy())
+                all_labels.extend(batch_labels.cpu().numpy())
+        
+        test_acc = test_correct / test_total
+        test_loss = test_loss_total / test_total
+        print(f"\nTest Accuracy: {test_acc:.4f}")
+        print(f"Test Loss: {test_loss:.4f}")
+        
+        # Calculate additional metrics
+        from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
+        
+        precision = precision_score(all_labels, all_predictions, average='binary')
+        recall = recall_score(all_labels, all_predictions, average='binary')
+        f1 = f1_score(all_labels, all_predictions, average='binary')
+        cm = confusion_matrix(all_labels, all_predictions)
+        
+        print(f"Precision: {precision:.4f}")
+        print(f"Recall: {recall:.4f}")
+        print(f"F1-Score: {f1:.4f}")
+        print(f"\nConfusion Matrix:")
+        print(cm)
+        
+        return {
+            'history': history,
+            'test_acc': test_acc,
+            'test_loss': test_loss,
+            'test_metrics': {
+                'precision': precision,
+                'recall': recall,
+                'f1': f1,
+                'confusion_matrix': cm
+            },
+            'predictions': all_predictions,
+            'true_labels': all_labels
+        }
+    
+    def visualize_results(self, training_results, dataset):
+        """Create comprehensive visualizations."""
+        print(f"\n{'='*60}")
+        print("CREATING VISUALIZATIONS")
+        print(f"{'='*60}")
+        
+        history = training_results['history']
+        
+        # 1. Training curves - show training vs validation
+        fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=('Loss: Training vs Validation', 'Accuracy: Training vs Validation')
+        )
+        
+        epochs = list(range(1, len(history['val_loss']) + 1))
+        
+        # Training loss
+        fig.add_trace(go.Scatter(
+            x=epochs, y=history['train_loss'],
+            mode='lines+markers', name='Train Loss',
+            line=dict(color='steelblue', width=2)
+        ), row=1, col=1)
+        
+        # Validation loss
+        fig.add_trace(go.Scatter(
+            x=epochs, y=history['val_loss'],
+            mode='lines+markers', name='Val Loss',
+            line=dict(color='coral', width=2)
+        ), row=1, col=1)
+        
+        # Training accuracy
+        fig.add_trace(go.Scatter(
+            x=epochs, y=history['train_acc'],
+            mode='lines+markers', name='Train Acc',
+            line=dict(color='steelblue', width=2)
+        ), row=1, col=2)
+        
+        # Validation accuracy
+        fig.add_trace(go.Scatter(
+            x=epochs, y=history['val_acc'],
+            mode='lines+markers', name='Val Acc',
+            line=dict(color='coral', width=2)
+        ), row=1, col=2)
+       
+        fig.update_xaxes(title_text="Epoch", row=1, col=1)
+        fig.update_xaxes(title_text="Epoch", row=1, col=2)
+        fig.update_yaxes(title_text="Loss", row=1, col=1)
+        fig.update_yaxes(title_text="Accuracy", row=1, col=2)
+        
+        fig.update_layout(
+            height=500,
+            template="plotly_dark",
+            title_text='Model Performance (Training vs Validation across epochs)',
+            showlegend=True
+        )
+        
+        self.figures['1. Training Progress'] = fig
+        
+        # 2. Confusion Matrix
+        cm = training_results['test_metrics']['confusion_matrix']
+        
+        fig = go.Figure(data=go.Heatmap(
+            z=cm,
+            x=['Non-AF', 'AF'],
+            y=['Non-AF', 'AF'],
+            colorscale='Blues',
+            text=cm,
+            texttemplate='%{text}',
+            textfont={"size": 20},
+            showscale=True
+        ))
+        
+        fig.update_layout(
+            title='Confusion Matrix (Test Set)',
+            xaxis_title='Predicted',
+            yaxis_title='True',
+            template="plotly_dark",
+            height=500
+        )
+        
+        self.figures['2. Confusion Matrix'] = fig
+        
+        # 3. Dataset statistics
+        file_stats = dataset['file_stats']
+        
+        fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=('Windows per File', 'HRV Length per File')
+        )
+        
+        # Extract file numbers for cleaner labels (e.g., "af_001", "non_af_003")
+        filenames = []
+        for fs in file_stats:
+            fname = fs['filename']
+            if '_af_' in fname and '_non_af_' not in fname:
+                # Extract AF file number
+                num = fname.split('_af_')[1].split('_')[0]
+                filenames.append(f"af_{num}")
+            elif '_non_af_' in fname:
+                # Extract non-AF file number
+                num = fname.split('_non_af_')[1].split('_')[0]
+                filenames.append(f"non_af_{num}")
+            else:
+                filenames.append(fname[:15])
+        
+        colors = ['red' if fs['label'] == 1 else 'blue' for fs in file_stats]
+        
+        fig.add_trace(go.Bar(
+            x=filenames,
+            y=[fs['num_windows'] for fs in file_stats],
+            marker=dict(color=colors),
+            name='Windows',
+            showlegend=False,
+            hovertemplate='%{x}<br>Windows: %{y}<extra></extra>'
+        ), row=1, col=1)
+        
+        fig.add_trace(go.Bar(
+            x=filenames,
+            y=[fs['hrv_length'] for fs in file_stats],
+            marker=dict(color=colors),
+            name='HRV Length',
+            showlegend=False,
+            hovertemplate='%{x}<br>HRV Length: %{y}<extra></extra>'
+        ), row=1, col=2)
+        
+        fig.update_xaxes(tickangle=90, row=1, col=1)
+        fig.update_xaxes(tickangle=90, row=1, col=2)
+        fig.update_yaxes(title_text="Count", row=1, col=1)
+        fig.update_yaxes(title_text="Count", row=1, col=2)
+        
+        fig.update_layout(
+            height=700,  # Increased height for better visibility
+            template="plotly_dark",
+            title_text='Dataset Statistics (Red=AF, Blue=Non-AF)'
+        )
+        
+        self.figures['3. Dataset Statistics'] = fig
+        
+        print("Visualizations created successfully!")
+
+
 def main():
-    """
-    Main entry point for the pipeline.
-    """
-    # Find all CSV files in recordings folder
-    recordings_path = Path(__file__).parent / "recordings"
-    csv_files = list(recordings_path.glob("*.csv"))
-    
-    if len(csv_files) == 0:
-        print(f"No CSV files found in {recordings_path}")
-        return
-    
-    print(f"Found {len(csv_files)} CSV file(s) in recordings folder:")
-    for i, csv_file in enumerate(csv_files, 1):
-        print(f"  {i}. {csv_file.name}")
-    
+    """Main entry point for AF classification pipeline."""
     # Initialize pipeline
-    pipeline = HRVPipeline()
+    pipeline = AFClassificationPipeline()
     
-    # Process first CSV file (or all if you want to loop)
-    csv_file = csv_files[0]
-    print(f"\nProcessing: {csv_file.name}")
+    # Find recordings directory
+    recordings_dir = Path(__file__).parent / "recordings"
     
-    # Run complete pipeline
-    results = pipeline.run_pipeline(csv_file, plot=True)
+    # Load all files
+    files_data = pipeline.load_all_recordings(recordings_dir)
     
-    # Generate tabbed HTML report with all visualizations
-    print("\n" + "="*60)
-    print("Generating interactive visualization report...")
-    print("="*60)
+    # Create windowed dataset
+    dataset = pipeline.create_dataset(files_data)
+    
+    # Train model
+    training_results = pipeline.train_model(dataset)
+    
+    # Visualize results
+    pipeline.visualize_results(training_results, dataset)
+    
+    # Generate HTML report
+    print(f"\n{'='*60}")
+    print("GENERATING HTML REPORT")
+    print(f"{'='*60}")
     
     html_file = create_tabbed_html(
         figures_dict=pipeline.figures,
-        output_path="hrv_analysis_report.html",
-        title="HRV Analysis Report"
+        output_path="af_classification_report.html",
+        title="AF Classification Report"
     )
+    
+    print(f"\nReport saved to: {html_file}")
     
     # Open in browser
     open_in_browser(html_file)
+    
+    print(f"\n{'='*60}")
+    print("PIPELINE COMPLETE!")
+    print(f"{'='*60}")
 
 
 if __name__ == "__main__":
     main()
+
