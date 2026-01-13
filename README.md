@@ -2,7 +2,7 @@
 
 Complete end-to-end pipeline for Heart Rate Variability (HRV) analysis and classification from raw ECG signals to deep learning predictions, with interactive Plotly visualizations.
 
-## 🎯 Overview
+## Overview
 
 This project implements a comprehensive HRV analysis system that:
 - Loads raw ECG/cardiac signals from CSV files
@@ -120,7 +120,7 @@ final_project_classification/
 └── hrv_analysis_report.html        # Generated dashboard
 ```
 
-## 🎯 Features
+## Features
 
 ✅ **Signal Processing**
 - Gaussian and bandpass filtering
