@@ -118,16 +118,16 @@ def create_windows(
 
 def extract_features_from_windows(
     windows: List[Dict],
-    hrv_extractor,
+    sampling_freq: int = 40,
     device: str = 'cpu',
     verbose: bool = True
 ) -> Tuple[torch.Tensor, List[np.ndarray], List[Dict]]:
     """
-    Extract features from all windows.
+    Extract features from all windows using the modular feature extraction pipeline.
     
     Args:
         windows: List of window dictionaries from create_windows()
-        hrv_extractor: Instance of HRVFeatureExtractor
+        sampling_freq: Sampling frequency in Hz (default: 40)
         device: Device for tensor operations ('cpu' or 'cuda')
         verbose: Whether to print progress information
         
@@ -137,6 +137,8 @@ def extract_features_from_windows(
             - rr_intervals_list: List of RR interval arrays for each window
             - window_metadata: List of metadata dicts for each window
     """
+    from .feature_extraction import extract_all_features_from_rr, features_dict_to_tensor
+    
     if len(windows) == 0:
         raise ValueError("No valid windows provided for feature extraction")
     
@@ -149,13 +151,18 @@ def extract_features_from_windows(
     
     for i, window in enumerate(windows):
         try:
-            # Extract features for this window
-            features_tensor, rr_intervals_ms = hrv_extractor.extract_all_features(
-                signal=window['signal'],
-                peak_indices=window['peaks'],
-                t_axis=window['t_axis'],
-                device=device
-            )
+            # Calculate RR intervals from peaks
+            peak_times = window['t_axis'][window['peaks']]
+            rr_intervals_ms = np.diff(peak_times) * 1000  # Convert to ms
+            
+            if len(rr_intervals_ms) < 3:
+                if verbose:
+                    print(f"  Skipping window {window['window_idx']}: insufficient RR intervals ({len(rr_intervals_ms)})")
+                continue
+            
+            # Extract features using modular pipeline
+            features_dict = extract_all_features_from_rr(rr_intervals_ms, sampling_freq=sampling_freq)
+            features_tensor = features_dict_to_tensor(features_dict, device=device)
             
             feature_tensors.append(features_tensor)
             rr_intervals_list.append(rr_intervals_ms)
@@ -280,7 +287,8 @@ def create_hrv_windows(
     hrv_series: np.ndarray,
     window_size: int = 200,
     overlap: int = 20,
-    label: int = 0
+    label: int = 0,
+    jitter_range: int = 0
 ) -> List[Dict]:
     """
     Divide HRV time series (RR intervals) into overlapping windows.
@@ -290,6 +298,7 @@ def create_hrv_windows(
         window_size: Number of RR intervals per window (default: 200)
         overlap: Number of overlapping RR intervals between windows (default: 20)
         label: Label for all windows (0 for non-AF, 1 for AF)
+        jitter_range: Maximum random shift (±) applied to window start for augmentation (default: 0)
         
     Returns:
         List of dictionaries, each containing:
@@ -315,20 +324,27 @@ def create_hrv_windows(
     
     # Create windows
     while start_idx + window_size <= len(hrv_series):
-        end_idx = start_idx + window_size
+        # Apply jitter augmentation: randomly shift window start within bounds
+        if jitter_range > 0:
+            jitter = np.random.randint(-jitter_range, jitter_range + 1)
+            jittered_start = max(0, min(start_idx + jitter, len(hrv_series) - window_size))
+        else:
+            jittered_start = start_idx
+        
+        end_idx = jittered_start + window_size
         
         window_info = {
-            'hrv_window': hrv_series[start_idx:end_idx],
+            'hrv_window': hrv_series[jittered_start:end_idx],
             'label': label,
             'window_idx': window_idx,
-            'start_idx': start_idx,
+            'start_idx': jittered_start,
             'end_idx': end_idx,
             'window_size': window_size
         }
         windows.append(window_info)
         window_idx += 1
         
-        # Move to next window
+        # Move to next window (based on original step, not jittered position)
         start_idx += step_size
     
     return windows
