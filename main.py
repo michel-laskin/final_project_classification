@@ -20,21 +20,18 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from pathlib import Path
-import glob
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
 
 # Import processing modules
 from processing.preprocessing import butter_bandpass_filter, extract_rr
-from processing.feature_extraction.feature_pipeline import extract_all_features_from_rr, features_dict_to_tensor, get_feature_names
-from visualizations.plotly_plots import (plot_mse, plot_mse_heatmap, plot_comprehensive_summary, 
-                                          visualize_windows, visualize_feature_heatmap)
+from processing.feature_extraction.feature_pipeline import extract_all_features_from_rr, features_dict_to_tensor
+from processing.windowing import create_hrv_windows
 from visualizations.html_viewer import create_tabbed_html, open_in_browser
-from processing.windowing import create_windows, extract_features_from_windows, get_window_statistics
 
 # Import model modules
-from Models.feature_encoder import FeatureEncoder
-from Models.tcn import TemporalConvNet
+from Models.tcn import FusionModel
 
 
 class ZebrafishPipeline:
@@ -48,8 +45,6 @@ class ZebrafishPipeline:
         self.config = {
             # Signal processing
             "sampling_freq": 40,  # Zebrafish data is sampled at 40 Hz
-            "averaging_type": "Gaussian",
-            "gaussian_sigma": 2,
             "low_threshold": 0.5,
             "high_threshold": 5.0,
             "filter_order": 4,
@@ -195,8 +190,6 @@ class ZebrafishPipeline:
     
     def create_dataset(self, files_data):
         """Create windowed dataset from all files with FILE-LEVEL split."""
-        from processing.windowing import create_hrv_windows
-        import numpy as np
         
         print(f"\n{'='*60}")
         print("CREATING HRV WINDOWED DATASET")
@@ -374,8 +367,6 @@ class ZebrafishPipeline:
     
     def train_model(self, dataset):
         """Train the FusionModel for classification."""
-        from Models.tcn import FusionModel
-        from scipy.stats import skew, kurtosis
         
         print(f"\n{'='*60}")
         print("TRAINING MODEL")
@@ -571,7 +562,6 @@ class ZebrafishPipeline:
         print(f"Test Loss: {test_loss:.4f}")
         
         # Calculate additional metrics
-        from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
         
         precision = precision_score(all_labels, all_predictions, average='binary')
         recall = recall_score(all_labels, all_predictions, average='binary')
@@ -661,8 +651,8 @@ class ZebrafishPipeline:
         
         fig = go.Figure(data=go.Heatmap(
             z=cm,
-            x=['Non-AF', 'AF'],
-            y=['Non-AF', 'AF'],
+            x=['Control', 'Propranolol'],
+            y=['Control', 'Propranolol'],
             colorscale='Blues',
             text=cm,
             texttemplate='%{text}',
@@ -688,20 +678,8 @@ class ZebrafishPipeline:
             subplot_titles=('Windows per File', 'HRV Length per File')
         )
         
-        # Extract file numbers for cleaner labels (e.g., "af_001", "non_af_003")
-        filenames = []
-        for fs in file_stats:
-            fname = fs['filename']
-            if '_af_' in fname and '_non_af_' not in fname:
-                # Extract AF file number
-                num = fname.split('_af_')[1].split('_')[0]
-                filenames.append(f"af_{num}")
-            elif '_non_af_' in fname:
-                # Extract non-AF file number
-                num = fname.split('_non_af_')[1].split('_')[0]
-                filenames.append(f"non_af_{num}")
-            else:
-                filenames.append(fname[:15])
+        # Use simple file index for labels
+        filenames = [f"File {i+1}" for i in range(len(file_stats))]
         
         colors = ['red' if fs['label'] == 1 else 'blue' for fs in file_stats]
         
@@ -729,9 +707,9 @@ class ZebrafishPipeline:
         fig.update_yaxes(title_text="Count", row=1, col=2)
         
         fig.update_layout(
-            height=700,  # Increased height for better visibility
+            height=700,
             template="plotly_dark",
-            title_text='Dataset Statistics (Red=AF, Blue=Non-AF)'
+            title_text='Dataset Statistics (Red=Propranolol, Blue=Control)'
         )
         
         self.figures['3. Dataset Statistics'] = fig
