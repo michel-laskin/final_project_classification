@@ -30,11 +30,11 @@ This will:
 ### Example Usage
 
 ```python
-from main import HRVPipeline
+from main import AFClassificationPipeline
 from pathlib import Path
 
 # Initialize pipeline with custom parameters
-pipeline = HRVPipeline(config={
+pipeline = AFClassificationPipeline(config={
     "window_size_sec": 10,      # 10 second windows
     "window_overlap": 0.5,       # 50% overlap
     "sampling_freq": 40,         # 40 Hz sampling rate
@@ -178,7 +178,7 @@ config = {
     "device": "cuda"               # or "cpu"
 }
 
-pipeline = HRVPipeline(config=config)
+pipeline = AFClassificationPipeline(config=config)
 ```
 
 ## Output Data

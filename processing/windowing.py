@@ -356,7 +356,8 @@ def split_windows(
     val_ratio: float = 0.2,
     test_ratio: float = 0.2,
     shuffle: bool = True,
-    random_seed: int = 42
+    random_seed: int = 42,
+    stratify: bool = True
 ) -> Tuple[List[Dict], List[Dict], List[Dict]]:
     """
     Split windows into train, validation, and test sets.
@@ -368,6 +369,7 @@ def split_windows(
         test_ratio: Ratio of windows for testing
         shuffle: Whether to shuffle windows before splitting
         random_seed: Random seed for reproducibility
+        stratify: Whether to stratify split by label (maintains class ratios)
         
     Returns:
         Tuple of (train_windows, val_windows, test_windows)
@@ -378,9 +380,43 @@ def split_windows(
     if len(windows) == 0:
         return [], [], []
     
-    # Shuffle if requested
+    np.random.seed(random_seed)
+    
+    if stratify:
+        # Group windows by label
+        label_groups: Dict[int, List[Dict]] = {}
+        for window in windows:
+            label = window.get('label', 0)
+            if label not in label_groups:
+                label_groups[label] = []
+            label_groups[label].append(window)
+        
+        train_windows, val_windows, test_windows = [], [], []
+        
+        # Split each group proportionally
+        for label, group_windows in label_groups.items():
+            if shuffle:
+                indices = np.random.permutation(len(group_windows))
+                group_windows = [group_windows[i] for i in indices]
+            
+            n_group = len(group_windows)
+            n_train = int(n_group * train_ratio)
+            n_val = int(n_group * val_ratio)
+            
+            train_windows.extend(group_windows[:n_train])
+            val_windows.extend(group_windows[n_train:n_train + n_val])
+            test_windows.extend(group_windows[n_train + n_val:])
+        
+        # Shuffle the combined sets to mix labels
+        if shuffle:
+            np.random.shuffle(train_windows)
+            np.random.shuffle(val_windows)
+            np.random.shuffle(test_windows)
+        
+        return train_windows, val_windows, test_windows
+    
+    # Non-stratified split (original behavior)
     if shuffle:
-        np.random.seed(random_seed)
         indices = np.random.permutation(len(windows))
         windows = [windows[i] for i in indices]
     

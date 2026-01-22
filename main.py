@@ -23,15 +23,17 @@ from pathlib import Path
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.preprocessing import StandardScaler
 
 # Import processing modules
 from processing.preprocessing import butter_bandpass_filter, extract_rr
-from processing.feature_extraction.feature_pipeline import extract_all_features_from_rr, features_dict_to_tensor
+from processing.feature_extraction.feature_pipeline import extract_all_features_from_rr, features_dict_to_tensor, get_feature_group_indices
 from processing.windowing import create_hrv_windows
 from visualizations.html_viewer import create_tabbed_html, open_in_browser
 
 # Import model modules
 from Models.tcn import FusionModel
+from Models.group_lasso import GroupLassoRegularizer
 
 
 class ZebrafishPipeline:
@@ -56,7 +58,7 @@ class ZebrafishPipeline:
             
             # HRV windowing
             "hrv_window_size": 200,
-            "hrv_overlap": 20,
+            "hrv_overlap": 180,
             
             # Feature extraction parameters
             "samp_en_m": 2,
@@ -70,18 +72,19 @@ class ZebrafishPipeline:
             "input_dims": None,  # Will be set after feature extraction
             
             # Model architecture
-            "embedding_dim": 32,  # Increased to handle larger feature vectors
-            "tcn_channels": [64, 128, 128],  # Deeper network for richer features
+            "embedding_dim": 16,  # Reduced from 32
+            "tcn_channels": [16, 32],  # Simplified: 2 layers, fewer channels
             "tcn_kernel_size": 3,
-            "dropout": 0.3,
+            "dropout": 0.5,  # Increased dropout
             "num_classes": 2,
             
             # Training
             "batch_size": 32,
             "epochs": 100,
-            "learning_rate": 0.001,
-            "weight_decay": 0.01,
-            "early_stopping_patience": 15,
+            "learning_rate": 0.0003,  # Slower learning rate
+            "weight_decay": 0.05,  # Stronger L2 regularization
+            "group_lasso_lambda": 0.01,  # Group lasso regularization strength
+            "early_stopping_patience": 20,
             
             # Train/val/test split ratios
             "train_ratio": 0.6,
@@ -117,8 +120,8 @@ class ZebrafishPipeline:
             raise ValueError(f"No CSV files found in {recordings_path}")
         
         files_data = []
-        af_count = 0
-        non_af_count = 0
+        propranolol_count = 0
+        control_count = 0
         
         for csv_file in csv_files:
             filename = csv_file.name
@@ -126,11 +129,11 @@ class ZebrafishPipeline:
             
             # Determine label from folder name
             if "Control" in filepath:
-                label = 0  # Control
-                non_af_count += 1
+                label = 0 
+                control_count += 1
             elif "Propranolol" in filepath:
-                label = 1  # Propranolol
-                af_count += 1
+                label = 1  
+                propranolol_count += 1
             else:
                 print(f"Skipping {filename} - label specific identifier not found")
                 continue
@@ -142,8 +145,8 @@ class ZebrafishPipeline:
             })
         
         print(f"Loaded {len(files_data)} files:")
-        print(f"  - AF files: {af_count}")
-        print(f"  - Non-AF files: {non_af_count}")
+        print(f"  - Propranolol files: {propranolol_count}")
+        print(f"  - Control files: {control_count}")
         
         return files_data
     
@@ -157,7 +160,6 @@ class ZebrafishPipeline:
         if 'Frame' in df.columns and 'Mean' in df.columns:
             ecg_signal = df['Mean'].values
             # Generate time from frame number and sampling frequency
-            # Frame is usually 0-indexed integer
             frames = df['Frame'].values
             time = frames / self.config['sampling_freq']
             
@@ -195,7 +197,7 @@ class ZebrafishPipeline:
         print("CREATING HRV WINDOWED DATASET")
         print(f"{'='*60}")
         
-        # CRITICAL: Split files FIRST, then create windows
+        # Split files FIRST, then create windows
         # This prevents data leakage where windows from same file appear in train/val/test
         
         np.random.seed(42)  # For reproducibility
@@ -284,16 +286,16 @@ class ZebrafishPipeline:
         print(f"Dataset created with FILE-LEVEL split:")
         
         # Count windows by label in each set
-        train_af = sum(1 for w in train_windows if w['label'] == 1)
-        train_non_af = sum(1 for w in train_windows if w['label'] == 0)
-        val_af = sum(1 for w in val_windows if w['label'] == 1)
-        val_non_af = sum(1 for w in val_windows if w['label'] == 0)
-        test_af = sum(1 for w in test_windows if w['label'] == 1)
-        test_non_af = sum(1 for w in test_windows if w['label'] == 0)
+        train_prop = sum(1 for w in train_windows if w['label'] == 1)
+        train_ctrl = sum(1 for w in train_windows if w['label'] == 0)
+        val_prop = sum(1 for w in val_windows if w['label'] == 1)
+        val_ctrl = sum(1 for w in val_windows if w['label'] == 0)
+        test_prop = sum(1 for w in test_windows if w['label'] == 1)
+        test_ctrl = sum(1 for w in test_windows if w['label'] == 0)
         
-        print(f"  - Train: {len(train_windows)} windows (AF:{train_af}, Non-AF:{train_non_af})")
-        print(f"  - Val: {len(val_windows)} windows (AF:{val_af}, Non-AF:{val_non_af})")
-        print(f"  - Test: {len(test_windows)} windows (AF:{test_af}, Non-AF:{test_non_af})")
+        print(f"  - Train: {len(train_windows)} windows (Propranolol:{train_prop}, Control:{train_ctrl})")
+        print(f"  - Val: {len(val_windows)} windows (Propranolol:{val_prop}, Control:{val_ctrl})")
+        print(f"  - Test: {len(test_windows)} windows (Propranolol:{test_prop}, Control:{test_ctrl})")
         
         return {
             'train_windows': train_windows,
@@ -386,6 +388,32 @@ class ZebrafishPipeline:
         num_features = train_features.shape[2]  # Shape is [num_windows, 1, num_features]
         print(f"\nAuto-detected feature dimension: {num_features}")
         
+        # ==========================================
+        # FEATURE SCALING (Standardization)
+        # ==========================================
+        print("\nApplying StandardScaler (Fit on Train, Transform All)...")
+        
+        # Reshape to 2D for scaler: [N, 1, F] -> [N, F]
+        train_flat = train_features.squeeze(1).cpu().numpy()
+        val_flat = val_features.squeeze(1).cpu().numpy()
+        test_flat = test_features.squeeze(1).cpu().numpy()
+        
+        # Initialize and fit scaler
+        scaler = StandardScaler()
+        train_scaled = scaler.fit_transform(train_flat)
+        
+        # Transform val and test (using train stats)
+        val_scaled = scaler.transform(val_flat)
+        test_scaled = scaler.transform(test_flat)
+        
+        # Convert back to tensor and reshape to [N, 1, F]
+        train_features = torch.tensor(train_scaled, dtype=torch.float32).unsqueeze(1).to(self.config['device'])
+        val_features = torch.tensor(val_scaled, dtype=torch.float32).unsqueeze(1).to(self.config['device'])
+        test_features = torch.tensor(test_scaled, dtype=torch.float32).unsqueeze(1).to(self.config['device'])
+        
+        print(f"Features scaled. Mean: {scaler.mean_.mean():.4f}, Var: {scaler.var_.mean():.4f}")
+
+        
         # Update config with detected input dimensions
         self.config['input_dims'] = {'comprehensive_features': num_features}
         
@@ -414,6 +442,21 @@ class ZebrafishPipeline:
             lr=self.config['learning_rate'],
             weight_decay=self.config.get('weight_decay', 0.01)  # Add L2 regularization
         )
+        
+        # Initialize Group Lasso regularizer
+        group_lasso_lambda = self.config.get('group_lasso_lambda', 0.01)
+        if group_lasso_lambda > 0:
+            feature_group_indices = get_feature_group_indices()
+            group_lasso_reg = GroupLassoRegularizer(
+                group_indices=feature_group_indices,
+                lambda_reg=group_lasso_lambda
+            )
+            print(f"\nGroup Lasso regularization enabled (lambda={group_lasso_lambda})")
+            print(f"  Feature groups: {list(feature_group_indices.keys())}")
+            for name, indices in feature_group_indices.items():
+                print(f"    - {name}: {len(indices)} features")
+        else:
+            group_lasso_reg = None
         
         # Training loop
         print(f"\nStarting training for {self.config['epochs']} epochs...")
@@ -454,7 +497,14 @@ class ZebrafishPipeline:
                 # Take the last timestep's output (seq_len=1 for static features)
                 outputs = outputs[:, -1, :]  # [batch, num_classes]
                 
-                loss = criterion(outputs, batch_labels)
+                ce_loss = criterion(outputs, batch_labels)
+                
+                # Add group lasso penalty
+                if group_lasso_reg is not None:
+                    group_lasso_penalty = group_lasso_reg.penalty_from_model(self.model)
+                    loss = ce_loss + group_lasso_penalty
+                else:
+                    loss = ce_loss
                 
                 # Backward pass
                 optimizer.zero_grad()

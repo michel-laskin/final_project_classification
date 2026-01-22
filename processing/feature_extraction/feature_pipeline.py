@@ -181,3 +181,66 @@ def get_feature_names(params: Optional[Dict] = None) -> list:
     dummy_rr = np.random.randn(200) * 50 + 500
     features = extract_all_features_from_rr(dummy_rr, params=params)
     return sorted(features.keys())
+
+
+def get_feature_group_indices(params: Optional[Dict] = None) -> Dict[str, list]:
+    """
+    Get the indices for each feature group.
+    
+    Features are organized into three groups:
+    - time_domain: HRV features, statistics, Hjorth parameters, pNN metrics
+    - frequency_domain: Wavelet transform features
+    - non_linear: Sample entropy, MSE, DFA, bispectrum features
+    
+    Since features are sorted alphabetically, groups are NOT contiguous.
+    This function returns the actual list of indices for each group.
+    
+    Args:
+        params: Optional parameter dictionary for feature extraction configuration.
+        
+    Returns:
+        Dict mapping group names to list of feature indices.
+    """
+    feature_names = get_feature_names(params)
+    
+    # Define which prefixes/patterns belong to which group
+    time_domain_prefixes = [
+        'BPM', 'Hjorth_', 'Mean_RR', 'RMSSD', 'RR_', 'SDNN', 'SDRR', 'pNN'
+    ]
+    
+    frequency_domain_prefixes = [
+        'Wavelet_'
+    ]
+    
+    non_linear_prefixes = [
+        'DFA_', 'HOS_', 'MSE_', 'SampleEntropy'
+    ]
+    
+    def get_group(name: str) -> str:
+        """Determine which group a feature belongs to."""
+        for prefix in time_domain_prefixes:
+            if name.startswith(prefix):
+                return 'time_domain'
+        for prefix in frequency_domain_prefixes:
+            if name.startswith(prefix):
+                return 'frequency_domain'
+        for prefix in non_linear_prefixes:
+            if name.startswith(prefix):
+                return 'non_linear'
+        # Default to time_domain for unrecognized features
+        return 'time_domain'
+    
+    # Collect indices for each group
+    group_indices: Dict[str, list] = {
+        'time_domain': [],
+        'frequency_domain': [],
+        'non_linear': []
+    }
+    
+    for idx, name in enumerate(feature_names):
+        group = get_group(name)
+        group_indices[group].append(idx)
+    
+    return group_indices
+
+

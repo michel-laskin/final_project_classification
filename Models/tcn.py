@@ -15,22 +15,23 @@ class Chomp1d(nn.Module):
 
 
 class TemporalBlock(nn.Module):
-    def __init__(self, n_inputs, n_outputs, kernel_size, stride, dilation, padding, dropout=0.2):
+    def __init__(self, n_inputs, n_outputs, kernel_size, stride, dilation, padding, dropout=0.4):
         super(TemporalBlock, self).__init__()
         
         # First dilated convolution
         self.conv1 = weight_norm(nn.Conv1d(n_inputs, n_outputs, kernel_size,
                                            stride=stride, padding=padding, dilation=dilation))
         self.chomp1 = Chomp1d(padding)
-        self.relu1 = nn.GELU() # Using GELU as requested for consistency, though ReLU is standard TCN
-        self.dropout1 = nn.Dropout(dropout)
+        self.relu1 = nn.GELU()
+        # Use Dropout1d (spatial dropout) - drops entire channels for better regularization in conv layers
+        self.dropout1 = nn.Dropout1d(dropout)
 
         # Second dilated convolution
         self.conv2 = weight_norm(nn.Conv1d(n_outputs, n_outputs, kernel_size,
                                            stride=stride, padding=padding, dilation=dilation))
         self.chomp2 = Chomp1d(padding)
         self.relu2 = nn.GELU()
-        self.dropout2 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout1d(dropout)
 
         self.net = nn.Sequential(self.conv1, self.chomp1, self.relu1, self.dropout1,
                                  self.conv2, self.chomp2, self.relu2, self.dropout2)
