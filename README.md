@@ -1,11 +1,11 @@
 # HRV Analysis & Classification Pipeline
 
-Complete end-to-end pipeline for Heart Rate Variability (HRV) analysis and classification from raw ECG signals to deep learning predictions, with interactive Plotly visualizations.
+End-to-end pipeline for Heart Rate Variability (HRV) analysis and classification from raw optical signals to deep learning predictions.
 
 ## Overview
 
 This project implements a comprehensive HRV analysis system that:
-- Loads raw ECG/cardiac signals from CSV files
+- Loads raw cardiac signals from CSV files
 - Performs signal preprocessing (filtering, peak detection)
 - Divides signals into overlapping temporal windows
 - Extracts physiological features (HRV metrics, statistical, wavelet)
@@ -39,7 +39,6 @@ This will:
 - Creates overlapping temporal windows from the signal
 - Configurable window size and overlap percentage
 - Ensures minimum peaks per window for reliable HRV analysis
-- **Output**: 19 windows (for ~96s signal with 10s windows, 50% overlap)
 
 ### 3. Feature Extraction
 Each window extracts **33 physiological features**:
