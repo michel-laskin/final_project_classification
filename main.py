@@ -41,7 +41,7 @@ from Models.group_lasso import GroupLassoRegularizer
 
 class ZebrafishPipeline:
     """
-    Complete pipeline for AF classification from PPG recordings.
+    Complete pipeline for toxisity classification from optical signal recordings.
     """
     
     def __init__(self, config=None):
