@@ -1,0 +1,485 @@
+{
+  "timestamp": "2026-01-24_16-32-39",
+  "config": {
+    "sampling_freq": 40,
+    "low_threshold": 0.5,
+    "high_threshold": 5.0,
+    "filter_order": 4,
+    "d": 12,
+    "p": 0.1,
+    "hz": 40,
+    "hrv_window_size": 200,
+    "hrv_overlap": 180,
+    "samp_en_m": 2,
+    "samp_en_r": 0.2,
+    "scales": 10,
+    "dfa_min_scale": 4,
+    "dfa_num_scales": 20,
+    "wavelet_num_scales": 12,
+    "input_dims": "{'comprehensive_features': 146}",
+    "embedding_dim": 16,
+    "tcn_channels": [
+      16,
+      32
+    ],
+    "tcn_kernel_size": 3,
+    "dropout": 0.5,
+    "num_classes": 2,
+    "batch_size": 32,
+    "epochs": 100,
+    "learning_rate": 0.0003,
+    "weight_decay": 0.05,
+    "group_lasso_lambda": 0.01,
+    "early_stopping_patience": 20,
+    "train_ratio": 0.6,
+    "val_ratio": 0.2,
+    "test_ratio": 0.2,
+    "device": "cpu"
+  },
+  "training_history": {
+    "train_loss": [
+      0.948384156375902,
+      0.9006171524081861,
+      0.8517806114626143,
+      0.7999294514464765,
+      0.7385526295934,
+      0.6834125403663556,
+      0.6130626999605641,
+      0.5512957621648088,
+      0.5018012734437237,
+      0.44172345104047483,
+      0.39692580456365273,
+      0.3392205065860791,
+      0.3187291712498771,
+      0.31766121534500574,
+      0.2913499424928719,
+      0.28418033872281284,
+      0.2677058677616658,
+      0.2523803296229106,
+      0.23466775294000292,
+      0.2297794371843338,
+      0.21848798714810636,
+      0.21098289292244818,
+      0.24554484586659017,
+      0.22711606622627906,
+      0.2083468557201204,
+      0.2023783355375633,
+      0.22606140897674334,
+      0.24978823164951217,
+      0.24679536725578477,
+      0.18394224559348546,
+      0.21343390607063342,
+      0.20017988543630885,
+      0.21017759586691326
+    ],
+    "train_acc": [
+      0.5527488855869243,
+      0.5780089153046062,
+      0.6389301634472511,
+      0.7473997028231798,
+      0.8380386329866271,
+      0.8588410104011887,
+      0.8915304606240714,
+      0.9093610698365527,
+      0.9182763744427934,
+      0.9212481426448736,
+      0.9286775631500743,
+      0.9479940564635958,
+      0.9450222882615156,
+      0.9286775631500743,
+      0.9435364041604755,
+      0.9479940564635958,
+      0.9569093610698366,
+      0.9583952451708767,
+      0.9673105497771174,
+      0.9687964338781575,
+      0.9673105497771174,
+      0.9658246656760773,
+      0.9450222882615156,
+      0.9524517087667161,
+      0.9702823179791976,
+      0.9643387815750372,
+      0.962852897473997,
+      0.9524517087667161,
+      0.9435364041604755,
+      0.9777117384843982,
+      0.9643387815750372,
+      0.9717682020802377,
+      0.962852897473997
+    ],
+    "val_loss": [
+      0.6800260508908388,
+      0.6756565438653634,
+      0.6558303867922667,
+      0.6362254766739562,
+      0.6166219900841493,
+      0.5618891501526454,
+      0.530589563452549,
+      0.5024172585130237,
+      0.459866272480418,
+      0.42978582097895474,
+      0.38800269009927324,
+      0.3608226657038453,
+      0.33296156933367504,
+      0.36616726793255266,
+      0.3543791220402618,
+      0.3279208320516423,
+      0.3097183673825723,
+      0.33424231915044983,
+      0.34284764163539,
+      0.29276518483166913,
+      0.3081987618340109,
+      0.33629712294085756,
+      0.3392921243502006,
+      0.33873329302257077,
+      0.33852716628851753,
+      0.34640314698094604,
+      0.42603936725954633,
+      0.41210985034080727,
+      0.35248752882914564,
+      0.3228459917788226,
+      0.3630814652999076,
+      0.4138551417847308,
+      0.340014283533625
+    ],
+    "val_acc": [
+      0.5857740585774058,
+      0.5857740585774058,
+      0.5983263598326359,
+      0.8535564853556485,
+      0.8200836820083682,
+      0.803347280334728,
+      0.7824267782426778,
+      0.7824267782426778,
+      0.8117154811715481,
+      0.8075313807531381,
+      0.8451882845188284,
+      0.8451882845188284,
+      0.8744769874476988,
+      0.8410041841004184,
+      0.8661087866108786,
+      0.8702928870292888,
+      0.8661087866108786,
+      0.8493723849372385,
+      0.8326359832635983,
+      0.8702928870292888,
+      0.8535564853556485,
+      0.8493723849372385,
+      0.8493723849372385,
+      0.8451882845188284,
+      0.8535564853556485,
+      0.8577405857740585,
+      0.8493723849372385,
+      0.8493723849372385,
+      0.8410041841004184,
+      0.8535564853556485,
+      0.8410041841004184,
+      0.8242677824267782,
+      0.8493723849372385
+    ]
+  },
+  "test_metrics": {
+    "accuracy": 0.8632478632478633,
+    "loss": 0.2649928006606224,
+    "precision": 0.7540983606557377,
+    "recall": 0.9787234042553191,
+    "f1": 0.8518518518518519,
+    "confusion_matrix": [
+      [
+        110,
+        30
+      ],
+      [
+        2,
+        92
+      ]
+    ]
+  },
+  "dataset_stats": {
+    "train_windows": 673,
+    "val_windows": 239,
+    "test_windows": 234,
+    "file_stats": [
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 969,
+        "num_windows": 39,
+        "num_rr_intervals": 969
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 621,
+        "num_windows": 22,
+        "num_rr_intervals": 621
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 601,
+        "num_windows": 21,
+        "num_rr_intervals": 601
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 824,
+        "num_windows": 32,
+        "num_rr_intervals": 824
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 927,
+        "num_windows": 37,
+        "num_rr_intervals": 927
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 894,
+        "num_windows": 35,
+        "num_rr_intervals": 894
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 942,
+        "num_windows": 38,
+        "num_rr_intervals": 942
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 880,
+        "num_windows": 35,
+        "num_rr_intervals": 880
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 863,
+        "num_windows": 34,
+        "num_rr_intervals": 863
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 883,
+        "num_windows": 35,
+        "num_rr_intervals": 883
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 783,
+        "num_windows": 30,
+        "num_rr_intervals": 783
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 722,
+        "num_windows": 27,
+        "num_rr_intervals": 722
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 788,
+        "num_windows": 30,
+        "num_rr_intervals": 788
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 797,
+        "num_windows": 30,
+        "num_rr_intervals": 797
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 927,
+        "num_windows": 37,
+        "num_rr_intervals": 927
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 561,
+        "num_windows": 19,
+        "num_rr_intervals": 561
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 923,
+        "num_windows": 37,
+        "num_rr_intervals": 923
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 948,
+        "num_windows": 38,
+        "num_rr_intervals": 948
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 940,
+        "num_windows": 38,
+        "num_rr_intervals": 940
+      },
+      {
+        "filename": "Values.csv",
+        "label": 0,
+        "hrv_length": 942,
+        "num_windows": 38,
+        "num_rr_intervals": 942
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 674,
+        "num_windows": 24,
+        "num_rr_intervals": 674
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 717,
+        "num_windows": 26,
+        "num_rr_intervals": 717
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 807,
+        "num_windows": 31,
+        "num_rr_intervals": 807
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 804,
+        "num_windows": 31,
+        "num_rr_intervals": 804
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 638,
+        "num_windows": 22,
+        "num_rr_intervals": 638
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 675,
+        "num_windows": 24,
+        "num_rr_intervals": 675
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 727,
+        "num_windows": 27,
+        "num_rr_intervals": 727
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 658,
+        "num_windows": 23,
+        "num_rr_intervals": 658
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 654,
+        "num_windows": 23,
+        "num_rr_intervals": 654
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 589,
+        "num_windows": 20,
+        "num_rr_intervals": 589
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 635,
+        "num_windows": 22,
+        "num_rr_intervals": 635
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 585,
+        "num_windows": 20,
+        "num_rr_intervals": 585
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 694,
+        "num_windows": 25,
+        "num_rr_intervals": 694
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 747,
+        "num_windows": 28,
+        "num_rr_intervals": 747
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 631,
+        "num_windows": 22,
+        "num_rr_intervals": 631
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 721,
+        "num_windows": 27,
+        "num_rr_intervals": 721
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 685,
+        "num_windows": 25,
+        "num_rr_intervals": 685
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 670,
+        "num_windows": 24,
+        "num_rr_intervals": 670
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 700,
+        "num_windows": 26,
+        "num_rr_intervals": 700
+      },
+      {
+        "filename": "Values.csv",
+        "label": 1,
+        "hrv_length": 673,
+        "num_windows": 24,
+        "num_rr_intervals": 673
+      }
+    ]
+  }
+}

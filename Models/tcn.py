@@ -22,22 +22,22 @@ class TemporalBlock(nn.Module):
         self.conv1 = weight_norm(nn.Conv1d(n_inputs, n_outputs, kernel_size,
                                            stride=stride, padding=padding, dilation=dilation))
         self.chomp1 = Chomp1d(padding)
-        self.relu1 = nn.GELU()
-        # Use Dropout1d (spatial dropout) - drops entire channels for better regularization in conv layers
+        self.relu1 = nn.SiLU()
+        # Spatial Dropout1d - drops entire channels for better regularization in conv layers
         self.dropout1 = nn.Dropout1d(dropout)
 
         # Second dilated convolution
         self.conv2 = weight_norm(nn.Conv1d(n_outputs, n_outputs, kernel_size,
                                            stride=stride, padding=padding, dilation=dilation))
         self.chomp2 = Chomp1d(padding)
-        self.relu2 = nn.GELU()
+        self.relu2 = nn.SiLU()
         self.dropout2 = nn.Dropout1d(dropout)
 
         self.net = nn.Sequential(self.conv1, self.chomp1, self.relu1, self.dropout1,
                                  self.conv2, self.chomp2, self.relu2, self.dropout2)
         
         self.downsample = nn.Conv1d(n_inputs, n_outputs, 1) if n_inputs != n_outputs else None
-        self.relu = nn.GELU()
+        self.relu = nn.SiLU()
         self.init_weights()
 
     def init_weights(self):
@@ -101,7 +101,7 @@ class FusionModel(nn.Module):
         self.tcn = TemporalConvNet(
             num_inputs=total_fusion_dim,
             num_channels=tcn_channels,
-            kernel_size=3, # Configurable
+            kernel_size=3,
             dropout=dropout
         )
         
@@ -121,7 +121,7 @@ class FusionModel(nn.Module):
         activations = {}
         
         # 1. Input Grouping & Parallel Encoding
-        # Sort keys to ensure deterministic order if dict is unordered (Python 3.7+ preserves insertion order, but safe practice)
+        # Sort keys to ensure deterministic order if dict is unordered
         # Assuming inputs and self.encoders keys match.
         for name in self.encoders:
             if name not in inputs:
@@ -129,8 +129,7 @@ class FusionModel(nn.Module):
             
             x = inputs[name] # [batch, seq_len, dim]
             
-            # Apply robust block
-            out = self.encoders[name](x) # [batch, seq_len, embedding_dim]
+            out = self.encoders[name](x)
             encoded_feats.append(out)
             
             if return_activations:
@@ -146,12 +145,12 @@ class FusionModel(nn.Module):
         # 3. Temporal Modeling (TCN)
         # TCN expects [batch, channels, seq_len]
         fused_t = fused.transpose(1, 2)
-        tcn_out = self.tcn(fused_t) # [batch, last_channel, seq_len]
+        tcn_out = self.tcn(fused_t)
         
         # 4. Classifier
         # Transpose back to [batch, seq_len, channels] to apply Linear
         tcn_out_t = tcn_out.transpose(1, 2)
-        logits = self.classifier(tcn_out_t) # [batch, seq_len, num_classes]
+        logits = self.classifier(tcn_out_t)
         
         if return_activations:
             return logits, activations

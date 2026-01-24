@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCN Architecture</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Times New Roman', serif;
+            background: #fff;
+            padding: 30px;
+            color: #333;
+        }
+
+        .figure {
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        .figure-caption {
+            font-size: 11px;
+            margin-top: 12px;
+            color: #444;
+        }
+
+        .figure-caption strong {
+            font-weight: bold;
+        }
+
+        /* Dilated Conv Visualization */
+        .dilated-conv {
+            display: inline-block;
+            position: relative;
+            padding: 20px 60px;
+        }
+
+        .layer-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 25px;
+            position: relative;
+        }
+
+        .layer-label {
+            width: 70px;
+            text-align: right;
+            font-size: 10px;
+            padding-right: 10px;
+            color: #666;
+        }
+
+        .layer-label-right {
+            width: 80px;
+            text-align: left;
+            font-size: 10px;
+            padding-left: 10px;
+            color: #666;
+        }
+
+        .cells {
+            display: flex;
+            gap: 0;
+        }
+
+        .cell {
+            width: 22px;
+            height: 22px;
+            border: 1px solid #666;
+            background: #4a90d9;
+        }
+
+        .cell.gray {
+            background: #888;
+        }
+
+        .cell.dashed {
+            border: 1px dashed #999;
+            background: #fff;
+        }
+
+        /* Connection lines for dilated conv */
+        .connections {
+            position: absolute;
+            top: 22px;
+            left: 80px;
+            width: 352px;
+            height: 25px;
+        }
+
+        .connections svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Residual Block Visualization */
+        .blocks-container {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            align-items: flex-start;
+        }
+
+        .block-diagram {
+            border: 1px dashed #999;
+            padding: 15px;
+            position: relative;
+            background: #fafafa;
+        }
+
+        .block-title {
+            position: absolute;
+            top: -10px;
+            right: 10px;
+            background: #fff;
+            padding: 0 5px;
+            font-size: 10px;
+            color: #666;
+        }
+
+        .node {
+            padding: 6px 12px;
+            font-size: 10px;
+            text-align: center;
+            margin: 0 auto;
+            min-width: 80px;
+            border: 1px solid #666;
+        }
+
+        /* I/O boundaries - sage green */
+        .node.input {
+            background: #b8d4be;
+            border-radius: 15px;
+        }
+
+        .node.output {
+            background: #b8d4be;
+            border-radius: 15px;
+        }
+
+        /* Convolution operations - warm orange */
+        .node.conv {
+            background: #f0b886;
+        }
+
+        /* Activation functions - slate blue */
+        .node.activation {
+            background: #a3bfdb;
+        }
+
+        /* Regularization (dropout) - soft coral */
+        .node.regularization {
+            background: #f0a8a8;
+        }
+
+        /* Residual/skip connections - warm sand */
+        .node.residual {
+            background: #e8d5b7;
+            font-size: 9px;
+        }
+
+        /* Composite blocks - soft lavender */
+        .node.block {
+            background: #c9b8db;
+        }
+
+        /* Addition node - warm sand (residual) */
+        .node.add {
+            width: 20px;
+            height: 20px;
+            min-width: 20px;
+            border-radius: 50%;
+            background: #e8d5b7;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+
+        .arrow {
+            text-align: center;
+            color: #666;
+            font-size: 10px;
+            margin: 3px 0;
+        }
+
+        .flow {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .parallel {
+            display: flex;
+            gap: 15px;
+            align-items: flex-start;
+        }
+
+        .branch {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .side-arrow {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+
+        .horiz-line {
+            width: 30px;
+            height: 1px;
+            background: #666;
+        }
+
+        .vert-line {
+            width: 1px;
+            height: 20px;
+            background: #666;
+            margin: 0 auto;
+        }
+
+        .corner-container {
+            position: relative;
+            height: 100px;
+            width: 30px;
+        }
+
+        .corner-down {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 30px;
+            height: 100%;
+            border-right: 1px solid #666;
+            border-bottom: 1px solid #666;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Figure 1: Dilated Causal Convolution -->
+    <div class="figure">
+        <div class="dilated-conv">
+            <!-- Output Layer -->
+            <div class="layer-row">
+                <div class="layer-label"></div>
+                <div class="cells">
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell"></div>
+                </div>
+                <div class="layer-label-right">Output</div>
+            </div>
+
+            <!-- d=4 Layer -->
+            <div class="layer-row">
+                <div class="layer-label">padding=8</div>
+                <div class="cells">
+                    <div class="cell dashed"></div>
+                    <div class="cell dashed"></div>
+                    <div class="cell dashed"></div>
+                    <div class="cell dashed"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell"></div>
+                </div>
+                <div class="layer-label-right">d=4</div>
+            </div>
+
+            <!-- d=2 Layer -->
+            <div class="layer-row">
+                <div class="layer-label">padding=4</div>
+                <div class="cells">
+                    <div class="cell dashed"></div>
+                    <div class="cell dashed"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell"></div>
+                    <div class="cell gray"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                </div>
+                <div class="layer-label-right">d=2</div>
+            </div>
+
+            <!-- d=1 Layer -->
+            <div class="layer-row">
+                <div class="layer-label">padding=2</div>
+                <div class="cells">
+                    <div class="cell dashed"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                </div>
+                <div class="layer-label-right">d=1</div>
+            </div>
+
+            <!-- Input Layer -->
+            <div class="layer-row">
+                <div class="layer-label"></div>
+                <div class="cells">
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                    <div class="cell"></div>
+                </div>
+                <div class="layer-label-right">Input</div>
+            </div>
+        </div>
+        <div class="figure-caption"><strong>Figure 1.</strong> Dilated causal convolution with dilation factors d=1, 2,
+            4 and kernel size k=3.</div>
+    </div>
+
+    <!-- Figure 2: Residual Blocks -->
+    <div class="figure">
+        <div class="blocks-container">
+            <!-- Unit Detail -->
+            <div class="block-diagram">
+                <div class="block-title">Unit</div>
+                <div class="flow">
+                    <div class="node input">Input</div>
+                    <div class="arrow">↓</div>
+                    <div class="node conv">Dilated Conv1D</div>
+                    <div class="arrow">↓</div>
+                    <div class="node conv">Chomp1d</div>
+                    <div class="arrow">↓</div>
+                    <div class="node activation">SiLU</div>
+                    <div class="arrow">↓</div>
+                    <div class="node regularization">Dropout1d</div>
+                    <div class="arrow">↓</div>
+                    <div class="node output">Output</div>
+                </div>
+            </div>
+
+            <!-- TemporalBlock -->
+            <div class="block-diagram">
+                <div class="block-title">TemporalBlock</div>
+                <div class="flow">
+                    <div class="node input">Input</div>
+                    <!-- Fork from Input -->
+                    <svg width="160" height="25" style="display: block; margin: 0 auto;">
+                        <line x1="80" y1="0" x2="80" y2="10" stroke="#666" stroke-width="1" />
+                        <line x1="30" y1="10" x2="130" y2="10" stroke="#666" stroke-width="1" />
+                        <line x1="30" y1="10" x2="30" y2="25" stroke="#666" stroke-width="1" />
+                        <line x1="130" y1="10" x2="130" y2="25" stroke="#666" stroke-width="1" />
+                    </svg>
+                    <!-- Two parallel paths -->
+                    <div style="display: flex; justify-content: center; gap: 20px;">
+                        <!-- Main Path (Left) -->
+                        <div class="flow" style="width: 80px;">
+                            <div class="node block">Unit</div>
+                            <div class="arrow">↓</div>
+                            <div class="node block">Unit</div>
+                        </div>
+                        <!-- Residual Path (Right) -->
+                        <div class="flow" style="width: 80px; justify-content: center;">
+                            <div class="node residual" style="font-size: 8px; padding: 6px 16px;">1×1
+                                Conv1D<br>(if dimensions<br>don't match)</div>
+                        </div>
+                    </div>
+                    <!-- Join to + -->
+                    <svg width="160" height="25" style="display: block; margin: 0 auto;">
+                        <line x1="30" y1="0" x2="30" y2="15" stroke="#666" stroke-width="1" />
+                        <line x1="130" y1="0" x2="130" y2="15" stroke="#666" stroke-width="1" />
+                        <line x1="30" y1="15" x2="130" y2="15" stroke="#666" stroke-width="1" />
+                        <line x1="80" y1="15" x2="80" y2="25" stroke="#666" stroke-width="1" />
+                    </svg>
+                    <div class="node add">+</div>
+                    <div class="arrow">↓</div>
+                    <div class="node activation">SiLU</div>
+                    <div class="arrow">↓</div>
+                    <div class="node output">Output</div>
+                </div>
+            </div>
+
+            <!-- Full TCN -->
+            <div class="block-diagram">
+                <div class="block-title">TemporalConvNet</div>
+                <div class="flow">
+                    <div class="node input">Input</div>
+                    <div class="arrow">↓</div>
+                    <div class="node block">TemporalBlock (16 ch, d=1)</div>
+                    <div class="arrow">↓</div>
+                    <div class="node block">TemporalBlock (32 ch, d=2)</div>
+                    <div class="arrow">↓</div>
+                    <div class="node output">Output</div>
+                </div>
+            </div>
+        </div>
+        <div class="figure-caption"><strong>Figure 2.</strong> TemporalBlock architecture. (<strong>left</strong>) Unit:
+            single dilated causal conv. (<strong>middle</strong>) TemporalBlock with residual. (<strong>right</strong>)
+            Full TCN stack.</div>
+    </div>
+
+    <!-- Figure 3: FusionModel -->
+    <div class="figure">
+        <div class="block-diagram" style="display: inline-block; padding: 25px 40px;">
+            <div class="block-title">FusionModel</div>
+            <div class="flow">
+                <!-- Parallel Encoders -->
+                <div style="display: flex; gap: 10px; margin-bottom: 5px;">
+                    <div class="node input" style="min-width: 70px; font-size: 8px;">Time-domain<br>features</div>
+                    <div class="node input" style="min-width: 70px; font-size: 8px;">Frequency-domain<br>features</div>
+                    <div class="node input" style="min-width: 70px; font-size: 8px;">Non-linear<br>features</div>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <div class="arrow" style="width: 60px;">↓</div>
+                    <div class="arrow" style="width: 60px;">↓</div>
+                    <div class="arrow" style="width: 60px;">↓</div>
+                </div>
+                <div style="display: flex; gap: 10px; margin-bottom: 5px;">
+                    <div class="node block" style="min-width: 60px; font-size: 8px;">Encoder</div>
+                    <div class="node block" style="min-width: 60px; font-size: 8px;">Encoder</div>
+                    <div class="node block" style="min-width: 60px; font-size: 8px;">Encoder</div>
+                </div>
+                <div class="arrow">↓ ↓ ↓</div>
+                <div class="node block">Concatenate</div>
+                <div class="arrow">↓</div>
+                <div class="node block">TemporalConvNet</div>
+                <div class="arrow">↓</div>
+                <div class="node conv">Linear</div>
+                <div class="arrow">↓</div>
+                <div class="node output">Output</div>
+            </div>
+        </div>
+        <div class="figure-caption"><strong>Figure 3.</strong> FusionModel: parallel feature encoding → concatenation →
+            TCN → classification.</div>
+    </div>
+
+</body>
+
+</html>

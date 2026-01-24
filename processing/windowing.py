@@ -8,279 +8,11 @@ and extract features from each window for temporal analysis.
 import numpy as np
 import torch
 from typing import Tuple, List, Dict, Optional
+from processing.preprocessing import process_file_to_hrv
 
 
-def create_windows(
-    signal: np.ndarray,
-    peaks: np.ndarray,
-    t_axis: np.ndarray,
-    window_size_sec: float,
-    overlap: float = 0.5,
-    sampling_freq: int = 40,
-    min_peaks_per_window: int = 3
-) -> List[Dict]:
-    """
-    Divide a signal into overlapping windows.
-    
-    Args:
-        signal: The preprocessed signal array
-        peaks: Array of peak indices in the signal
-        t_axis: Time axis corresponding to the signal
-        window_size_sec: Window size in seconds
-        overlap: Overlap ratio between windows (0.0 to 0.99)
-        sampling_freq: Sampling frequency in Hz
-        min_peaks_per_window: Minimum number of peaks required per window
-        
-    Returns:
-        List of dictionaries, each containing:
-            - 'signal': signal segment for this window
-            - 'peaks': peak indices relative to window start
-            - 't_axis': time axis for this window
-            - 'window_idx': window index
-            - 'start_idx': start index in original signal
-            - 'end_idx': end index in original signal
-            - 'start_time': start time in seconds
-            - 'end_time': end time in seconds
-    """
-    # Calculate window parameters
-    window_size_samples = int(window_size_sec * sampling_freq)
-    step_size_samples = int(window_size_samples * (1 - overlap))
-    
-    # Ensure minimum step size
-    if step_size_samples < 1:
-        step_size_samples = 1
-    
-    signal_length = len(signal)
-    windows = []
-    window_idx = 0
-    
-    # Create windows
-    start_idx = 0
-    while start_idx + window_size_samples <= signal_length:
-        end_idx = start_idx + window_size_samples
-        
-        # Extract window signal and time axis
-        window_signal = signal[start_idx:end_idx]
-        window_t_axis = t_axis[start_idx:end_idx]
-        
-        # Find peaks within this window
-        peaks_mask = (peaks >= start_idx) & (peaks < end_idx)
-        window_peaks_absolute = peaks[peaks_mask]
-        
-        # Convert peak indices to be relative to window start
-        window_peaks = window_peaks_absolute - start_idx
-        
-        # Only include windows with sufficient peaks
-        if len(window_peaks) >= min_peaks_per_window:
-            window_info = {
-                'signal': window_signal,
-                'peaks': window_peaks,
-                't_axis': window_t_axis - window_t_axis[0],  # Normalize to start at 0
-                'window_idx': window_idx,
-                'start_idx': start_idx,
-                'end_idx': end_idx,
-                'start_time': t_axis[start_idx],
-                'end_time': t_axis[end_idx - 1],
-                'num_peaks': len(window_peaks)
-            }
-            windows.append(window_info)
-            window_idx += 1
-        
-        # Move to next window
-        start_idx += step_size_samples
-    
-    # Handle the last partial window if it exists
-    if start_idx < signal_length and signal_length - start_idx >= window_size_samples // 2:
-        end_idx = signal_length
-        window_signal = signal[start_idx:end_idx]
-        window_t_axis = t_axis[start_idx:end_idx]
-        
-        peaks_mask = (peaks >= start_idx) & (peaks < end_idx)
-        window_peaks_absolute = peaks[peaks_mask]
-        window_peaks = window_peaks_absolute - start_idx
-        
-        if len(window_peaks) >= min_peaks_per_window:
-            window_info = {
-                'signal': window_signal,
-                'peaks': window_peaks,
-                't_axis': window_t_axis - window_t_axis[0],
-                'window_idx': window_idx,
-                'start_idx': start_idx,
-                'end_idx': end_idx,
-                'start_time': t_axis[start_idx],
-                'end_time': t_axis[end_idx - 1],
-                'num_peaks': len(window_peaks)
-            }
-            windows.append(window_info)
-    
-    return windows
 
 
-def extract_features_from_windows(
-    windows: List[Dict],
-    sampling_freq: int = 40,
-    device: str = 'cpu',
-    verbose: bool = True
-) -> Tuple[torch.Tensor, List[np.ndarray], List[Dict]]:
-    """
-    Extract features from all windows using the modular feature extraction pipeline.
-    
-    Args:
-        windows: List of window dictionaries from create_windows()
-        sampling_freq: Sampling frequency in Hz (default: 40)
-        device: Device for tensor operations ('cpu' or 'cuda')
-        verbose: Whether to print progress information
-        
-    Returns:
-        Tuple of:
-            - features_tensor: Tensor of shape [num_windows, 1, num_features]
-            - rr_intervals_list: List of RR interval arrays for each window
-            - window_metadata: List of metadata dicts for each window
-    """
-    from .feature_extraction import extract_all_features_from_rr, features_dict_to_tensor
-    
-    if len(windows) == 0:
-        raise ValueError("No valid windows provided for feature extraction")
-    
-    feature_tensors = []
-    rr_intervals_list = []
-    window_metadata = []
-    
-    if verbose:
-        print(f"\nExtracting features from {len(windows)} windows...")
-    
-    for i, window in enumerate(windows):
-        try:
-            # Calculate RR intervals from peaks
-            peak_times = window['t_axis'][window['peaks']]
-            rr_intervals_ms = np.diff(peak_times) * 1000  # Convert to ms
-            
-            if len(rr_intervals_ms) < 3:
-                if verbose:
-                    print(f"  Skipping window {window['window_idx']}: insufficient RR intervals ({len(rr_intervals_ms)})")
-                continue
-            
-            # Extract features using modular pipeline
-            features_dict = extract_all_features_from_rr(rr_intervals_ms, sampling_freq=sampling_freq)
-            features_tensor = features_dict_to_tensor(features_dict, device=device)
-            
-            feature_tensors.append(features_tensor)
-            rr_intervals_list.append(rr_intervals_ms)
-            
-            # Store metadata
-            metadata = {
-                'window_idx': window['window_idx'],
-                'start_time': window['start_time'],
-                'end_time': window['end_time'],
-                'num_peaks': window['num_peaks'],
-                'num_features': features_tensor.shape[2]
-            }
-            window_metadata.append(metadata)
-            
-            if verbose and (i + 1) % 10 == 0:
-                print(f"  Processed {i + 1}/{len(windows)} windows...")
-                
-        except Exception as e:
-            if verbose:
-                print(f"  Warning: Failed to extract features from window {window['window_idx']}: {e}")
-            continue
-    
-    if len(feature_tensors) == 0:
-        raise ValueError("Failed to extract features from any window")
-    
-    # Stack all feature tensors along the batch dimension
-    # Each tensor is [1, 1, num_features], stack to [num_windows, 1, num_features]
-    all_features = torch.cat(feature_tensors, dim=0)
-    
-    if verbose:
-        print(f"Successfully extracted features from {len(feature_tensors)} windows")
-        print(f"Feature tensor shape: {all_features.shape}")
-    
-    return all_features, rr_intervals_list, window_metadata
-
-
-def get_window_statistics(windows: List[Dict]) -> Dict:
-    """
-    Calculate statistics about the windows.
-    
-    Args:
-        windows: List of window dictionaries
-        
-    Returns:
-        Dictionary with window statistics
-    """
-    if len(windows) == 0:
-        return {
-            'num_windows': 0,
-            'avg_peaks_per_window': 0,
-            'min_peaks': 0,
-            'max_peaks': 0,
-            'total_duration': 0
-        }
-    
-    peak_counts = [w['num_peaks'] for w in windows]
-    durations = [w['end_time'] - w['start_time'] for w in windows]
-    
-    stats = {
-        'num_windows': len(windows),
-        'avg_peaks_per_window': np.mean(peak_counts),
-        'min_peaks': np.min(peak_counts),
-        'max_peaks': np.max(peak_counts),
-        'std_peaks': np.std(peak_counts),
-        'avg_duration': np.mean(durations),
-        'total_duration': windows[-1]['end_time'] - windows[0]['start_time']
-    }
-    
-    return stats
-
-
-def visualize_windows(
-    signal: np.ndarray,
-    t_axis: np.ndarray,
-    windows: List[Dict],
-    max_windows_to_show: int = 5
-):
-    """
-    Visualize the signal divided into windows.
-    
-    Args:
-        signal: Original signal array
-        t_axis: Time axis
-        windows: List of window dictionaries
-        max_windows_to_show: Maximum number of windows to highlight
-    """
-    import matplotlib.pyplot as plt
-    
-    fig, ax = plt.subplots(figsize=(14, 6))
-    
-    # Plot the full signal
-    ax.plot(t_axis, signal, 'b-', alpha=0.5, linewidth=0.8, label='Signal')
-    
-    # Highlight windows with different colors
-    colors = plt.cm.rainbow(np.linspace(0, 1, min(len(windows), max_windows_to_show)))
-    
-    for i, window in enumerate(windows[:max_windows_to_show]):
-        start_t = window['start_time']
-        end_t = window['end_time']
-        
-        # Shade the window region
-        ax.axvspan(start_t, end_t, alpha=0.2, color=colors[i], 
-                   label=f'Window {i+1} ({window["num_peaks"]} peaks)')
-        
-        # Mark peaks in this window
-        peak_times = window['t_axis'][window['peaks']] + window['start_time']
-        peak_values = window['signal'][window['peaks']]
-        ax.plot(peak_times, peak_values, 'r*', markersize=8)
-    
-    ax.set_xlabel('Time (s)', fontsize=12)
-    ax.set_ylabel('Amplitude', fontsize=12)
-    ax.set_title(f'Signal Windowing (showing {min(len(windows), max_windows_to_show)} of {len(windows)} windows)', 
-                 fontsize=14, fontweight='bold')
-    ax.legend(loc='upper right', fontsize=9)
-    ax.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
 
 
 def create_hrv_windows(
@@ -350,139 +82,124 @@ def create_hrv_windows(
     return windows
 
 
-def split_windows(
-    windows: List[Dict],
-    train_ratio: float = 0.6,
-    val_ratio: float = 0.2,
-    test_ratio: float = 0.2,
-    shuffle: bool = True,
-    random_seed: int = 42,
-    stratify: bool = True
-) -> Tuple[List[Dict], List[Dict], List[Dict]]:
+def create_windowed_dataset(files_data: List[Dict], config: Dict) -> Dict:
     """
-    Split windows into train, validation, and test sets.
+    Create windowed dataset from all files with FILE-LEVEL split.
     
     Args:
-        windows: List of window dictionaries
-        train_ratio: Ratio of windows for training
-        val_ratio: Ratio of windows for validation
-        test_ratio: Ratio of windows for testing
-        shuffle: Whether to shuffle windows before splitting
-        random_seed: Random seed for reproducibility
-        stratify: Whether to stratify split by label (maintains class ratios)
+        files_data: List of file metadata dictionaries.
+        config: Configuration dictionary.
         
     Returns:
-        Tuple of (train_windows, val_windows, test_windows)
+        Dictionary containing train/val/test windows and stats.
     """
-    if abs(train_ratio + val_ratio + test_ratio - 1.0) > 1e-6:
-        raise ValueError("train_ratio + val_ratio + test_ratio must equal 1.0")
+    print(f"\n{'='*60}")
+    print("CREATING HRV WINDOWED DATASET")
+    print(f"{'='*60}")
     
-    if len(windows) == 0:
-        return [], [], []
+    # Split files FIRST, then create windows
+    # This prevents data leakage where windows from same file appear in train/val/test
     
-    np.random.seed(random_seed)
+    np.random.seed(42)  # For reproducibility
     
-    if stratify:
-        # Group windows by label
-        label_groups: Dict[int, List[Dict]] = {}
+    # Stratified Split: Separate files by label to ensure balanced sets
+    control_indices = [i for i, f in enumerate(files_data) if f['label'] == 0]
+    propranolol_indices = [i for i, f in enumerate(files_data) if f['label'] == 1]
+    
+    # Shuffle each set
+    np.random.shuffle(control_indices)
+    np.random.shuffle(propranolol_indices)
+    
+    # Calculate split sizes for each class
+    n_control = len(control_indices)
+    n_prop = len(propranolol_indices)
+    
+    n_train_c = int(n_control * config['train_ratio'])
+    n_val_c = int(n_control * config['val_ratio'])
+    
+    n_train_p = int(n_prop * config['train_ratio'])
+    n_val_p = int(n_prop * config['val_ratio'])
+    
+    # Create splits per class
+    train_file_indices = control_indices[:n_train_c] + propranolol_indices[:n_train_p]
+    val_file_indices = control_indices[n_train_c:n_train_c + n_val_c] + propranolol_indices[n_train_p:n_train_p + n_val_p]
+    test_file_indices = control_indices[n_train_c + n_val_c:] + propranolol_indices[n_train_p + n_val_p:]
+    
+    # Shuffle final sets to mix classes
+    np.random.shuffle(train_file_indices)
+    np.random.shuffle(val_file_indices)
+    np.random.shuffle(test_file_indices)
+    
+    print(f"\nFile-level split (prevents data leakage):")
+    print(f"  - Train files: {len(train_file_indices)}")
+    print(f"  - Val files: {len(val_file_indices)}")
+    print(f"  - Test files: {len(test_file_indices)}")
+    
+    # Process each set separately
+    train_windows = []
+    val_windows = []
+    test_windows = []
+    file_stats = []
+    
+    for i, file_info in enumerate(files_data):
+        print(f"\nProcessing {i+1}/{len(files_data)}: {file_info['filename']}")
+        
+        # Extract HRV
+        data = process_file_to_hrv(file_info['filepath'], config)
+        hrv_series = data['rr_intervals_ms']
+        
+        print(f"  HRV length: {len(hrv_series)} intervals")
+        
+        # Create windows
+        windows = create_hrv_windows(
+            hrv_series=hrv_series,
+            window_size=config['hrv_window_size'],
+            overlap=config['hrv_overlap'],
+            label=file_info['label']
+        )
+        
+        print(f"  Created {len(windows)} windows")
+        
+        # Store file metadata
+        file_stats.append({
+            'filename': file_info['filename'],
+            'label': file_info['label'],
+            'hrv_length': len(hrv_series),
+            'num_windows': len(windows),
+            'num_rr_intervals': len(hrv_series)
+        })
+        
+        # Add file identifier to each window
         for window in windows:
-            label = window.get('label', 0)
-            if label not in label_groups:
-                label_groups[label] = []
-            label_groups[label].append(window)
+            window['source_file'] = file_info['filename']
+            window['file_label'] = file_info['label']
         
-        train_windows, val_windows, test_windows = [], [], []
-        
-        # Split each group proportionally
-        for label, group_windows in label_groups.items():
-            if shuffle:
-                indices = np.random.permutation(len(group_windows))
-                group_windows = [group_windows[i] for i in indices]
-            
-            n_group = len(group_windows)
-            n_train = int(n_group * train_ratio)
-            n_val = int(n_group * val_ratio)
-            
-            train_windows.extend(group_windows[:n_train])
-            val_windows.extend(group_windows[n_train:n_train + n_val])
-            test_windows.extend(group_windows[n_train + n_val:])
-        
-        # Shuffle the combined sets to mix labels
-        if shuffle:
-            np.random.shuffle(train_windows)
-            np.random.shuffle(val_windows)
-            np.random.shuffle(test_windows)
-        
-        return train_windows, val_windows, test_windows
+        # Add to appropriate set based on file index
+        if i in train_file_indices:
+            train_windows.extend(windows)
+        elif i in val_file_indices:
+            val_windows.extend(windows)
+        else:  # test
+            test_windows.extend(windows)
     
-    # Non-stratified split (original behavior)
-    if shuffle:
-        indices = np.random.permutation(len(windows))
-        windows = [windows[i] for i in indices]
+    print(f"\n{'='*60}")
+    print(f"Dataset created with FILE-LEVEL split:")
     
-    # Calculate split indices
-    n_total = len(windows)
-    n_train = int(n_total * train_ratio)
-    n_val = int(n_total * val_ratio)
+    # Count windows by label in each set
+    train_prop = sum(1 for w in train_windows if w['label'] == 1)
+    train_ctrl = sum(1 for w in train_windows if w['label'] == 0)
+    val_prop = sum(1 for w in val_windows if w['label'] == 1)
+    val_ctrl = sum(1 for w in val_windows if w['label'] == 0)
+    test_prop = sum(1 for w in test_windows if w['label'] == 1)
+    test_ctrl = sum(1 for w in test_windows if w['label'] == 0)
     
-    # Split windows
-    train_windows = windows[:n_train]
-    val_windows = windows[n_train:n_train + n_val]
-    test_windows = windows[n_train + n_val:]
+    print(f"  - Train: {len(train_windows)} windows (Propranolol:{train_prop}, Control:{train_ctrl})")
+    print(f"  - Val: {len(val_windows)} windows (Propranolol:{val_prop}, Control:{val_ctrl})")
+    print(f"  - Test: {len(test_windows)} windows (Propranolol:{test_prop}, Control:{test_ctrl})")
     
-    return train_windows, val_windows, test_windows
-
-
-def visualize_feature_heatmap(
-    features_tensor: torch.Tensor,
-    window_metadata: List[Dict],
-    feature_names: Optional[List[str]] = None,
-    max_features_to_show: int = 30
-):
-    """
-    Visualize features across windows as a heatmap.
-    
-    Args:
-        features_tensor: Tensor of shape [num_windows, 1, num_features]
-        window_metadata: List of metadata for each window
-        feature_names: Optional list of feature names
-        max_features_to_show: Maximum number of features to display
-    """
-    import matplotlib.pyplot as plt
-    
-    # Convert to numpy and squeeze
-    features = features_tensor.squeeze(1).cpu().numpy()  # [num_windows, num_features]
-    num_windows, num_features = features.shape
-    
-    # Limit features if too many
-    if num_features > max_features_to_show:
-        features = features[:, :max_features_to_show]
-        num_features = max_features_to_show
-    
-    # Create figure
-    fig, ax = plt.subplots(figsize=(14, 8))
-    
-    # Create heatmap
-    im = ax.imshow(features.T, aspect='auto', cmap='viridis', interpolation='nearest')
-    
-    # Set labels
-    ax.set_xlabel('Window Index', fontsize=12)
-    ax.set_ylabel('Feature Index', fontsize=12)
-    ax.set_title('Feature Values Across Windows', fontsize=14, fontweight='bold')
-    
-    # Set ticks
-    ax.set_xticks(range(num_windows))
-    ax.set_xticklabels([f"{i}" for i in range(num_windows)])
-    
-    if feature_names and len(feature_names) == num_features:
-        ax.set_yticks(range(num_features))
-        ax.set_yticklabels(feature_names, fontsize=8)
-    else:
-        ax.set_yticks(range(0, num_features, 5))
-    
-    # Add colorbar
-    cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label('Feature Value', rotation=270, labelpad=20)
-    
-    plt.tight_layout()
-    plt.show()
+    return {
+        'train_windows': train_windows,
+        'val_windows': val_windows,
+        'test_windows': test_windows,
+        'file_stats': file_stats
+    }

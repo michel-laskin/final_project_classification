@@ -28,8 +28,11 @@ from sklearn.preprocessing import StandardScaler
 # Import processing modules
 from processing.preprocessing import butter_bandpass_filter, extract_rr
 from processing.feature_extraction.feature_pipeline import extract_all_features_from_rr, features_dict_to_tensor, get_feature_group_indices
-from processing.windowing import create_hrv_windows
-from visualizations.html_viewer import create_tabbed_html, open_in_browser
+from processing.windowing import create_windowed_dataset
+
+
+import json
+from datetime import datetime
 
 # Import model modules
 from Models.tcn import FusionModel
@@ -150,159 +153,7 @@ class ZebrafishPipeline:
         
         return files_data
     
-    def process_file_to_hrv(self, filepath):
-        """Process a single CSV file to extract HRV time series."""
-        # Load CSV
-        df = pd.read_csv(filepath)
-        
-        # Extract Time and Signal
-        # Handle Zebrafish 'Values.csv' format (Frame, Mean)
-        if 'Frame' in df.columns and 'Mean' in df.columns:
-            ecg_signal = df['Mean'].values
-            # Generate time from frame number and sampling frequency
-            frames = df['Frame'].values
-            time = frames / self.config['sampling_freq']
-            
-        # Handle Standard format (Time, PPG)
-        elif 'Time' in df.columns and 'PPG' in df.columns:
-            time = df['Time'].values
-            ecg_signal = df['PPG'].values
-            
-        else:
-            raise ValueError(f"CSV file must contain ('Frame', 'Mean') or ('Time', 'PPG') columns. Found: {df.columns.tolist()}")
-        
-        # Preprocess signal with bandpass filter
-        filtered_signal = butter_bandpass_filter(
-            ecg_signal,
-            lowcut=self.config['low_threshold'],
-            highcut=self.config['high_threshold'],
-            fs=self.config['sampling_freq'],
-            order=self.config['filter_order']
-        )
-        
-        # Extract RR intervals (already in milliseconds)
-        rr_intervals_ms = extract_rr(filtered_signal, self.config)
-        
-        return {
-            'time': time,
-            'ppg_signal': ecg_signal,
-            'filtered_signal': filtered_signal,
-            'rr_intervals_ms': rr_intervals_ms
-        }
     
-    def create_dataset(self, files_data):
-        """Create windowed dataset from all files with FILE-LEVEL split."""
-        
-        print(f"\n{'='*60}")
-        print("CREATING HRV WINDOWED DATASET")
-        print(f"{'='*60}")
-        
-        # Split files FIRST, then create windows
-        # This prevents data leakage where windows from same file appear in train/val/test
-        
-        np.random.seed(42)  # For reproducibility
-        
-        # Stratified Split: Separate files by label to ensure balanced sets
-        control_indices = [i for i, f in enumerate(files_data) if f['label'] == 0]
-        propranolol_indices = [i for i, f in enumerate(files_data) if f['label'] == 1]
-        
-        # Shuffle each set
-        np.random.shuffle(control_indices)
-        np.random.shuffle(propranolol_indices)
-        
-        # Calculate split sizes for each class
-        n_control = len(control_indices)
-        n_prop = len(propranolol_indices)
-        
-        n_train_c = int(n_control * self.config['train_ratio'])
-        n_val_c = int(n_control * self.config['val_ratio'])
-        
-        n_train_p = int(n_prop * self.config['train_ratio'])
-        n_val_p = int(n_prop * self.config['val_ratio'])
-        
-        # Create splits per class
-        train_file_indices = control_indices[:n_train_c] + propranolol_indices[:n_train_p]
-        val_file_indices = control_indices[n_train_c:n_train_c + n_val_c] + propranolol_indices[n_train_p:n_train_p + n_val_p]
-        test_file_indices = control_indices[n_train_c + n_val_c:] + propranolol_indices[n_train_p + n_val_p:]
-        
-        # Shuffle final sets to mix classes
-        np.random.shuffle(train_file_indices)
-        np.random.shuffle(val_file_indices)
-        np.random.shuffle(test_file_indices)
-        
-        print(f"\nFile-level split (prevents data leakage):")
-        print(f"  - Train files: {len(train_file_indices)}")
-        print(f"  - Val files: {len(val_file_indices)}")
-        print(f"  - Test files: {len(test_file_indices)}")
-        
-        # Process each set separately
-        train_windows = []
-        val_windows = []
-        test_windows = []
-        file_stats = []
-        
-        for i, file_info in enumerate(files_data):
-            print(f"\nProcessing {i+1}/{len(files_data)}: {file_info['filename']}")
-            
-            # Extract HRV
-            data = self.process_file_to_hrv(file_info['filepath'])
-            hrv_series = data['rr_intervals_ms']
-            
-            print(f"  HRV length: {len(hrv_series)} intervals")
-            
-            # Create windows
-            windows = create_hrv_windows(
-                hrv_series=hrv_series,
-                window_size=self.config['hrv_window_size'],
-                overlap=self.config['hrv_overlap'],
-                label=file_info['label']
-            )
-            
-            print(f"  Created {len(windows)} windows")
-            
-            # Store file metadata
-            file_stats.append({
-                'filename': file_info['filename'],
-                'label': file_info['label'],
-                'hrv_length': len(hrv_series),
-                'num_windows': len(windows),
-                'num_rr_intervals': len(hrv_series)
-            })
-            
-            # Add file identifier to each window
-            for window in windows:
-                window['source_file'] = file_info['filename']
-                window['file_label'] = file_info['label']
-            
-            # Add to appropriate set based on file index
-            if i in train_file_indices:
-                train_windows.extend(windows)
-            elif i in val_file_indices:
-                val_windows.extend(windows)
-            else:  # test
-                test_windows.extend(windows)
-        
-        print(f"\n{'='*60}")
-        print(f"Dataset created with FILE-LEVEL split:")
-        
-        # Count windows by label in each set
-        train_prop = sum(1 for w in train_windows if w['label'] == 1)
-        train_ctrl = sum(1 for w in train_windows if w['label'] == 0)
-        val_prop = sum(1 for w in val_windows if w['label'] == 1)
-        val_ctrl = sum(1 for w in val_windows if w['label'] == 0)
-        test_prop = sum(1 for w in test_windows if w['label'] == 1)
-        test_ctrl = sum(1 for w in test_windows if w['label'] == 0)
-        
-        print(f"  - Train: {len(train_windows)} windows (Propranolol:{train_prop}, Control:{train_ctrl})")
-        print(f"  - Val: {len(val_windows)} windows (Propranolol:{val_prop}, Control:{val_ctrl})")
-        print(f"  - Test: {len(test_windows)} windows (Propranolol:{test_prop}, Control:{test_ctrl})")
-        
-        return {
-            'train_windows': train_windows,
-            'val_windows': val_windows,
-            'test_windows': test_windows,
-            'file_stats': file_stats
-        }
     
     def extract_features_from_windows(self, windows, verbose=True):
         """
@@ -638,133 +489,63 @@ class ZebrafishPipeline:
             'true_labels': all_labels
         }
     
-    def visualize_results(self, training_results, dataset):
-        """Create comprehensive visualizations."""
+    def save_results(self, training_results, dataset):
+        """Save training results to a timestamped folder in results/."""
         print(f"\n{'='*60}")
-        print("CREATING VISUALIZATIONS")
+        print("SAVING RESULTS")
         print(f"{'='*60}")
         
-        history = training_results['history']
+        # Create timestamped results folder
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        results_dir = Path(__file__).parent / "results" / timestamp
+        results_dir.mkdir(parents=True, exist_ok=True)
         
-        # 1. Training curves - show training vs validation
-        fig = make_subplots(
-            rows=1, cols=2,
-            subplot_titles=('Loss: Training vs Validation', 'Accuracy: Training vs Validation')
-        )
+        # Prepare results dictionary
+        results = {
+            "timestamp": timestamp,
+            "config": {k: v if not isinstance(v, (list, dict)) or isinstance(v, list) else str(v) 
+                      for k, v in self.config.items()},
+            "training_history": {
+                "train_loss": training_results['history']['train_loss'],
+                "train_acc": training_results['history']['train_acc'],
+                "val_loss": training_results['history']['val_loss'],
+                "val_acc": training_results['history']['val_acc']
+            },
+            "test_metrics": {
+                "accuracy": training_results['test_acc'],
+                "loss": training_results['test_loss'],
+                "precision": training_results['test_metrics']['precision'],
+                "recall": training_results['test_metrics']['recall'],
+                "f1": training_results['test_metrics']['f1'],
+                "confusion_matrix": training_results['test_metrics']['confusion_matrix'].tolist()
+            },
+            "dataset_stats": {
+                "train_windows": len(dataset['train_windows']),
+                "val_windows": len(dataset['val_windows']),
+                "test_windows": len(dataset['test_windows']),
+                "file_stats": dataset['file_stats']
+            }
+        }
         
-        epochs = list(range(1, len(history['val_loss']) + 1))
+        # Save results JSON
+        results_file = results_dir / "results.json"
+        with open(results_file, 'w') as f:
+            json.dump(results, f, indent=2)
+        print(f"Results saved to: {results_file}")
         
-        # Training loss
-        fig.add_trace(go.Scatter(
-            x=epochs, y=history['train_loss'],
-            mode='lines+markers', name='Train Loss',
-            line=dict(color='steelblue', width=2)
-        ), row=1, col=1)
+        # Save model weights
+        model_file = results_dir / "model.pth"
+        torch.save(self.model.state_dict(), model_file)
+        print(f"Model saved to: {model_file}")
         
-        # Validation loss
-        fig.add_trace(go.Scatter(
-            x=epochs, y=history['val_loss'],
-            mode='lines+markers', name='Val Loss',
-            line=dict(color='coral', width=2)
-        ), row=1, col=1)
+        # Also copy best_model.pth if it exists
+        best_model_src = Path(__file__).parent / "best_model.pth"
+        if best_model_src.exists():
+            import shutil
+            shutil.copy(best_model_src, results_dir / "best_model.pth")
         
-        # Training accuracy
-        fig.add_trace(go.Scatter(
-            x=epochs, y=history['train_acc'],
-            mode='lines+markers', name='Train Acc',
-            line=dict(color='steelblue', width=2)
-        ), row=1, col=2)
-        
-        # Validation accuracy
-        fig.add_trace(go.Scatter(
-            x=epochs, y=history['val_acc'],
-            mode='lines+markers', name='Val Acc',
-            line=dict(color='coral', width=2)
-        ), row=1, col=2)
-       
-        fig.update_xaxes(title_text="Epoch", row=1, col=1)
-        fig.update_xaxes(title_text="Epoch", row=1, col=2)
-        fig.update_yaxes(title_text="Loss", row=1, col=1)
-        fig.update_yaxes(title_text="Accuracy", row=1, col=2)
-        
-        fig.update_layout(
-            height=500,
-            template="plotly_dark",
-            title_text='Model Performance (Training vs Validation across epochs)',
-            showlegend=True
-        )
-        
-        self.figures['1. Training Progress'] = fig
-        
-        # 2. Confusion Matrix
-        cm = training_results['test_metrics']['confusion_matrix']
-        
-        fig = go.Figure(data=go.Heatmap(
-            z=cm,
-            x=['Control', 'Propranolol'],
-            y=['Control', 'Propranolol'],
-            colorscale='Blues',
-            text=cm,
-            texttemplate='%{text}',
-            textfont={"size": 20},
-            showscale=True
-        ))
-        
-        fig.update_layout(
-            title='Confusion Matrix (Test Set)',
-            xaxis_title='Predicted',
-            yaxis_title='True',
-            template="plotly_dark",
-            height=500
-        )
-        
-        self.figures['2. Confusion Matrix'] = fig
-        
-        # 3. Dataset statistics
-        file_stats = dataset['file_stats']
-        
-        fig = make_subplots(
-            rows=1, cols=2,
-            subplot_titles=('Windows per File', 'HRV Length per File')
-        )
-        
-        # Use simple file index for labels
-        filenames = [f"File {i+1}" for i in range(len(file_stats))]
-        
-        colors = ['red' if fs['label'] == 1 else 'blue' for fs in file_stats]
-        
-        fig.add_trace(go.Bar(
-            x=filenames,
-            y=[fs['num_windows'] for fs in file_stats],
-            marker=dict(color=colors),
-            name='Windows',
-            showlegend=False,
-            hovertemplate='%{x}<br>Windows: %{y}<extra></extra>'
-        ), row=1, col=1)
-        
-        fig.add_trace(go.Bar(
-            x=filenames,
-            y=[fs['hrv_length'] for fs in file_stats],
-            marker=dict(color=colors),
-            name='HRV Length',
-            showlegend=False,
-            hovertemplate='%{x}<br>HRV Length: %{y}<extra></extra>'
-        ), row=1, col=2)
-        
-        fig.update_xaxes(tickangle=90, row=1, col=1)
-        fig.update_xaxes(tickangle=90, row=1, col=2)
-        fig.update_yaxes(title_text="Count", row=1, col=1)
-        fig.update_yaxes(title_text="Count", row=1, col=2)
-        
-        fig.update_layout(
-            height=700,
-            template="plotly_dark",
-            title_text='Dataset Statistics (Red=Propranolol, Blue=Control)'
-        )
-        
-        self.figures['3. Dataset Statistics'] = fig
-        
-        print("Visualizations created successfully!")
+        print(f"\nAll results saved to: {results_dir}")
+        return results_dir
 
 
 def main():
@@ -779,33 +560,19 @@ def main():
     files_data = pipeline.load_all_recordings(recordings_dir)
     
     # Create windowed dataset
-    dataset = pipeline.create_dataset(files_data)
+    dataset = create_windowed_dataset(files_data, pipeline.config)
     
     # Train model
     training_results = pipeline.train_model(dataset)
     
-    # Visualize results
-    pipeline.visualize_results(training_results, dataset)
-    
-    # Generate HTML report
-    print(f"\n{'='*60}")
-    print("GENERATING HTML REPORT")
-    print(f"{'='*60}")
-    
-    html_file = create_tabbed_html(
-        figures_dict=pipeline.figures,
-        output_path="zebrafish_classification_report.html",
-        title="Zebrafish Classification Report"
-    )
-    
-    print(f"\nReport saved to: {html_file}")
-    
-    # Open in browser
-    open_in_browser(html_file)
+    # Save results to timestamped folder
+    results_dir = pipeline.save_results(training_results, dataset)
     
     print(f"\n{'='*60}")
     print("PIPELINE COMPLETE!")
     print(f"{'='*60}")
+    print(f"\nTo visualize results, run:")
+    print(f"  python visualizations/visualize_results.py")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,369 +13,130 @@
         }
 
         body {
-            font-family: 'Times New Roman', 'Cambria', Georgia, serif;
-            background-color: #ffffff;
-            color: #2c3e50;
-            padding: 40px 20px;
-            max-width: 1000px;
-            margin: 0 auto;
-        }
-
-        h1 {
-            font-size: 1.4rem;
-            font-weight: bold;
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        .figure-container {
-            margin: 20px 0;
+            font-family: 'Times New Roman', serif;
+            background: #fff;
             padding: 30px;
-            background: #fafafa;
-            border: 1px solid #ddd;
+            color: #333;
         }
 
-        .network-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 40px 20px;
-        }
-
-        svg {
-            overflow: visible;
-        }
-
-        .connection {
-            stroke: #2c3e50;
-            stroke-width: 1.5;
-            fill: none;
-        }
-
-        .node {
-            stroke: #2c3e50;
-            stroke-width: 2;
-        }
-
-        .input-node {
-            fill: url(#inputPattern);
-        }
-
-        .hidden-node {
-            fill: url(#hiddenPattern);
-        }
-
-        .output-node {
-            fill: url(#outputPattern);
-        }
-
-        .layer-label {
-            font-family: 'Times New Roman', serif;
-            font-size: 14px;
-            text-anchor: middle;
-            fill: #2c3e50;
-        }
-
-        .sublabel {
-            font-family: 'Times New Roman', serif;
-            font-size: 11px;
-            text-anchor: middle;
-            fill: #666;
-            font-style: italic;
+        .figure {
+            margin-bottom: 40px;
+            text-align: center;
         }
 
         .figure-caption {
-            text-align: center;
-            margin-top: 25px;
-            font-size: 0.9rem;
-            color: #555;
-            line-height: 1.5;
+            font-size: 11px;
+            margin-top: 12px;
+            color: #444;
         }
 
         .figure-caption strong {
             font-weight: bold;
         }
 
-        .legend {
-            display: flex;
-            justify-content: center;
-            gap: 40px;
-            margin-top: 25px;
-            flex-wrap: wrap;
+        .block-diagram {
+            border: 1px dashed #999;
+            padding: 15px;
+            position: relative;
+            background: #fafafa;
+            display: inline-block;
         }
 
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 0.9rem;
-        }
-
-        .legend-circle {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            border: 2px solid #2c3e50;
-        }
-
-        .legend-input {
-            background: linear-gradient(135deg, #3498db 25%, #2980b9 50%, #3498db 75%);
-        }
-
-        .legend-hidden {
-            background: linear-gradient(135deg, #e67e22 25%, #d35400 50%, #e67e22 75%);
-        }
-
-        .legend-output {
-            background: linear-gradient(135deg, #27ae60 25%, #1e8449 50%, #27ae60 75%);
-        }
-
-        .operation-labels {
-            display: flex;
-            justify-content: center;
-            gap: 60px;
-            margin-top: 20px;
-            flex-wrap: wrap;
-        }
-
-        .operation-label {
-            text-align: center;
-            font-size: 0.85rem;
-        }
-
-        .operation-label .op-name {
-            font-weight: bold;
-            display: block;
-        }
-
-        .operation-label .op-detail {
-            font-style: italic;
+        .block-title {
+            position: absolute;
+            top: -10px;
+            right: 10px;
+            background: #fff;
+            padding: 0 5px;
+            font-size: 10px;
             color: #666;
-            font-size: 0.8rem;
         }
 
-        @media print {
-            .figure-container {
-                border: 1px solid #ccc;
-                background: white;
-            }
+        .node {
+            padding: 6px 12px;
+            font-size: 10px;
+            text-align: center;
+            margin: 0 auto;
+            min-width: 80px;
+            border: 1px solid #666;
+        }
+
+        /* I/O boundaries - sage green */
+        .node.input {
+            background: #b8d4be;
+            border-radius: 15px;
+        }
+
+        .node.output {
+            background: #b8d4be;
+            border-radius: 15px;
+        }
+
+        /* Linear/transformation operations - warm orange */
+        .node.linear {
+            background: #f0b886;
+        }
+
+        /* Normalization - slate blue */
+        .node.norm {
+            background: #a3bfdb;
+        }
+
+        /* Activation functions - slate blue */
+        .node.activation {
+            background: #a3bfdb;
+        }
+
+        /* Regularization (dropout) - soft coral */
+        .node.regularization {
+            background: #f0a8a8;
+        }
+
+        .arrow {
+            text-align: center;
+            color: #666;
+            font-size: 10px;
+            margin: 3px 0;
+        }
+
+        .flow {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .dim-label {
+            font-size: 9px;
+            color: #888;
+            margin-top: 2px;
         }
     </style>
 </head>
+
 <body>
-    <h1>Feature Encoder Architecture</h1>
 
-    <div class="figure-container">
-        <div class="network-container">
-            <svg width="800" height="380" viewBox="0 0 800 380">
-                <!-- Pattern definitions for textured nodes -->
-                <defs>
-                    <!-- Input pattern (blue with topographic lines) -->
-                    <pattern id="inputPattern" patternUnits="objectBoundingBox" width="1" height="1">
-                        <rect width="100%" height="100%" fill="#3498db"/>
-                        <path d="M5,15 Q15,10 25,15 T45,15" stroke="#2980b9" stroke-width="1.5" fill="none" opacity="0.6"/>
-                        <path d="M0,25 Q12,20 24,25 T48,25" stroke="#2980b9" stroke-width="1.5" fill="none" opacity="0.5"/>
-                        <path d="M3,35 Q18,30 33,35 T48,35" stroke="#2980b9" stroke-width="1.5" fill="none" opacity="0.4"/>
-                    </pattern>
-
-                    <!-- Hidden pattern (orange with topographic lines) -->
-                    <pattern id="hiddenPattern" patternUnits="objectBoundingBox" width="1" height="1">
-                        <rect width="100%" height="100%" fill="#e67e22"/>
-                        <path d="M5,12 Q15,8 25,12 T45,12" stroke="#d35400" stroke-width="1.5" fill="none" opacity="0.6"/>
-                        <path d="M8,22 Q18,18 28,22 T48,22" stroke="#d35400" stroke-width="1.5" fill="none" opacity="0.5"/>
-                        <path d="M2,32 Q14,28 26,32 T48,32" stroke="#d35400" stroke-width="1.5" fill="none" opacity="0.5"/>
-                        <path d="M6,42 Q16,38 26,42 T46,42" stroke="#d35400" stroke-width="1.5" fill="none" opacity="0.4"/>
-                    </pattern>
-
-                    <!-- Output pattern (green with topographic lines) -->
-                    <pattern id="outputPattern" patternUnits="objectBoundingBox" width="1" height="1">
-                        <rect width="100%" height="100%" fill="#27ae60"/>
-                        <path d="M5,15 Q15,10 25,15 T45,15" stroke="#1e8449" stroke-width="1.5" fill="none" opacity="0.6"/>
-                        <path d="M0,25 Q12,20 24,25 T48,25" stroke="#1e8449" stroke-width="1.5" fill="none" opacity="0.5"/>
-                        <path d="M3,35 Q18,30 33,35 T48,35" stroke="#1e8449" stroke-width="1.5" fill="none" opacity="0.4"/>
-                    </pattern>
-                </defs>
-
-                <!-- Layer positions -->
-                <!-- Input: x=80, Hidden1(Linear): x=230, Hidden2(LayerNorm): x=380, Hidden3(SiLU): x=530, Output: x=680 -->
-
-                <!-- Connection lines - Input to Linear -->
-                <g class="connections">
-                    <!-- From input nodes to hidden layer 1 -->
-                    <line class="connection" x1="104" y1="90" x2="206" y2="60"/>
-                    <line class="connection" x1="104" y1="90" x2="206" y2="130"/>
-                    <line class="connection" x1="104" y1="90" x2="206" y2="200"/>
-                    <line class="connection" x1="104" y1="90" x2="206" y2="270"/>
-                    <line class="connection" x1="104" y1="90" x2="206" y2="340"/>
-
-                    <line class="connection" x1="104" y1="165" x2="206" y2="60"/>
-                    <line class="connection" x1="104" y1="165" x2="206" y2="130"/>
-                    <line class="connection" x1="104" y1="165" x2="206" y2="200"/>
-                    <line class="connection" x1="104" y1="165" x2="206" y2="270"/>
-                    <line class="connection" x1="104" y1="165" x2="206" y2="340"/>
-
-                    <line class="connection" x1="104" y1="240" x2="206" y2="60"/>
-                    <line class="connection" x1="104" y1="240" x2="206" y2="130"/>
-                    <line class="connection" x1="104" y1="240" x2="206" y2="200"/>
-                    <line class="connection" x1="104" y1="240" x2="206" y2="270"/>
-                    <line class="connection" x1="104" y1="240" x2="206" y2="340"/>
-
-                    <line class="connection" x1="104" y1="315" x2="206" y2="60"/>
-                    <line class="connection" x1="104" y1="315" x2="206" y2="130"/>
-                    <line class="connection" x1="104" y1="315" x2="206" y2="200"/>
-                    <line class="connection" x1="104" y1="315" x2="206" y2="270"/>
-                    <line class="connection" x1="104" y1="315" x2="206" y2="340"/>
-
-                    <!-- Hidden 1 to Hidden 2 (LayerNorm) -->
-                    <line class="connection" x1="254" y1="60" x2="356" y2="60"/>
-                    <line class="connection" x1="254" y1="60" x2="356" y2="130"/>
-                    <line class="connection" x1="254" y1="60" x2="356" y2="200"/>
-                    <line class="connection" x1="254" y1="60" x2="356" y2="270"/>
-                    <line class="connection" x1="254" y1="60" x2="356" y2="340"/>
-
-                    <line class="connection" x1="254" y1="130" x2="356" y2="60"/>
-                    <line class="connection" x1="254" y1="130" x2="356" y2="130"/>
-                    <line class="connection" x1="254" y1="130" x2="356" y2="200"/>
-                    <line class="connection" x1="254" y1="130" x2="356" y2="270"/>
-                    <line class="connection" x1="254" y1="130" x2="356" y2="340"/>
-
-                    <line class="connection" x1="254" y1="200" x2="356" y2="60"/>
-                    <line class="connection" x1="254" y1="200" x2="356" y2="130"/>
-                    <line class="connection" x1="254" y1="200" x2="356" y2="200"/>
-                    <line class="connection" x1="254" y1="200" x2="356" y2="270"/>
-                    <line class="connection" x1="254" y1="200" x2="356" y2="340"/>
-
-                    <line class="connection" x1="254" y1="270" x2="356" y2="60"/>
-                    <line class="connection" x1="254" y1="270" x2="356" y2="130"/>
-                    <line class="connection" x1="254" y1="270" x2="356" y2="200"/>
-                    <line class="connection" x1="254" y1="270" x2="356" y2="270"/>
-                    <line class="connection" x1="254" y1="270" x2="356" y2="340"/>
-
-                    <line class="connection" x1="254" y1="340" x2="356" y2="60"/>
-                    <line class="connection" x1="254" y1="340" x2="356" y2="130"/>
-                    <line class="connection" x1="254" y1="340" x2="356" y2="200"/>
-                    <line class="connection" x1="254" y1="340" x2="356" y2="270"/>
-                    <line class="connection" x1="254" y1="340" x2="356" y2="340"/>
-
-                    <!-- Hidden 2 to Hidden 3 (SiLU) - one-to-one -->
-                    <line class="connection" x1="404" y1="60" x2="506" y2="60"/>
-                    <line class="connection" x1="404" y1="130" x2="506" y2="130"/>
-                    <line class="connection" x1="404" y1="200" x2="506" y2="200"/>
-                    <line class="connection" x1="404" y1="270" x2="506" y2="270"/>
-                    <line class="connection" x1="404" y1="340" x2="506" y2="340"/>
-
-                    <!-- Hidden 3 to Hidden 4 (Dropout) - one-to-one -->
-                    <line class="connection" x1="554" y1="60" x2="656" y2="60"/>
-                    <line class="connection" x1="554" y1="130" x2="656" y2="130"/>
-                    <line class="connection" x1="554" y1="200" x2="656" y2="200"/>
-                    <line class="connection" x1="554" y1="270" x2="656" y2="270"/>
-                    <line class="connection" x1="554" y1="340" x2="656" y2="340"/>
-
-                    <!-- Hidden 4 to Output -->
-                    <line class="connection" x1="704" y1="60" x2="756" y2="130"/>
-                    <line class="connection" x1="704" y1="130" x2="756" y2="130"/>
-                    <line class="connection" x1="704" y1="200" x2="756" y2="200"/>
-                    <line class="connection" x1="704" y1="270" x2="756" y2="200"/>
-                    <line class="connection" x1="704" y1="340" x2="756" y2="270"/>
-
-                    <line class="connection" x1="704" y1="60" x2="756" y2="200"/>
-                    <line class="connection" x1="704" y1="130" x2="756" y2="270"/>
-                    <line class="connection" x1="704" y1="200" x2="756" y2="130"/>
-                    <line class="connection" x1="704" y1="270" x2="756" y2="270"/>
-                    <line class="connection" x1="704" y1="340" x2="756" y2="130"/>
-                </g>
-
-                <!-- Input Layer Nodes (Blue) -->
-                <g class="input-layer">
-                    <circle class="node input-node" cx="80" cy="90" r="24"/>
-                    <circle class="node input-node" cx="80" cy="165" r="24"/>
-                    <circle class="node input-node" cx="80" cy="240" r="24"/>
-                    <circle class="node input-node" cx="80" cy="315" r="24"/>
-                </g>
-
-                <!-- Hidden Layer 1 - Linear (Orange) -->
-                <g class="hidden-layer-1">
-                    <circle class="node hidden-node" cx="230" cy="60" r="24"/>
-                    <circle class="node hidden-node" cx="230" cy="130" r="24"/>
-                    <circle class="node hidden-node" cx="230" cy="200" r="24"/>
-                    <circle class="node hidden-node" cx="230" cy="270" r="24"/>
-                    <circle class="node hidden-node" cx="230" cy="340" r="24"/>
-                </g>
-
-                <!-- Hidden Layer 2 - LayerNorm (Orange) -->
-                <g class="hidden-layer-2">
-                    <circle class="node hidden-node" cx="380" cy="60" r="24"/>
-                    <circle class="node hidden-node" cx="380" cy="130" r="24"/>
-                    <circle class="node hidden-node" cx="380" cy="200" r="24"/>
-                    <circle class="node hidden-node" cx="380" cy="270" r="24"/>
-                    <circle class="node hidden-node" cx="380" cy="340" r="24"/>
-                </g>
-
-                <!-- Hidden Layer 3 - SiLU (Orange) -->
-                <g class="hidden-layer-3">
-                    <circle class="node hidden-node" cx="530" cy="60" r="24"/>
-                    <circle class="node hidden-node" cx="530" cy="130" r="24"/>
-                    <circle class="node hidden-node" cx="530" cy="200" r="24"/>
-                    <circle class="node hidden-node" cx="530" cy="270" r="24"/>
-                    <circle class="node hidden-node" cx="530" cy="340" r="24"/>
-                </g>
-
-                <!-- Hidden Layer 4 - Dropout (Orange) -->
-                <g class="hidden-layer-4">
-                    <circle class="node hidden-node" cx="680" cy="60" r="24"/>
-                    <circle class="node hidden-node" cx="680" cy="130" r="24"/>
-                    <circle class="node hidden-node" cx="680" cy="200" r="24"/>
-                    <circle class="node hidden-node" cx="680" cy="270" r="24"/>
-                    <circle class="node hidden-node" cx="680" cy="340" r="24"/>
-                </g>
-
-                <!-- Output Layer Nodes (Green) -->
-                <g class="output-layer">
-                    <circle class="node output-node" cx="780" cy="130" r="24"/>
-                    <circle class="node output-node" cx="780" cy="200" r="24"/>
-                    <circle class="node output-node" cx="780" cy="270" r="24"/>
-                </g>
-
-                <!-- Layer Labels -->
-                <text class="layer-label" x="80" y="365">Input</text>
-                <text class="sublabel" x="80" y="378">(d<tspan baseline-shift="sub" font-size="9">in</tspan>)</text>
-
-                <text class="layer-label" x="230" y="15">Linear</text>
-
-                <text class="layer-label" x="380" y="15">LayerNorm</text>
-
-                <text class="layer-label" x="530" y="15">SiLU</text>
-
-                <text class="layer-label" x="680" y="15">Dropout</text>
-                <text class="sublabel" x="680" y="28">(p=0.1)</text>
-
-                <text class="layer-label" x="780" y="315">Output</text>
-                <text class="sublabel" x="780" y="328">(d<tspan baseline-shift="sub" font-size="9">out</tspan>)</text>
-            </svg>
-        </div>
-
-        <div class="legend">
-            <div class="legend-item">
-                <div class="legend-circle legend-input"></div>
-                <span>Input Features</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-circle legend-hidden"></div>
-                <span>Hidden Layers</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-circle legend-output"></div>
-                <span>Encoded Output</span>
+    <!-- Feature Encoder Architecture -->
+    <div class="figure">
+        <div class="block-diagram" style="padding: 25px 40px;">
+            <div class="block-title">FeatureEncoder</div>
+            <div class="flow">
+                <div class="node input">Input</div>
+                <div class="arrow">↓</div>
+                <div class="node linear">Linear</div>
+                <div class="arrow">↓</div>
+                <div class="node norm">LayerNorm</div>
+                <div class="arrow">↓</div>
+                <div class="node activation">ReLU</div>
+                <div class="arrow">↓</div>
+                <div class="node regularization">Dropout</div>
+                <div class="arrow">↓</div>
+                <div class="node output">Output</div>
             </div>
         </div>
-
-        <p class="figure-caption">
-            <strong>Figure 1.</strong> Neural network architecture of the Feature Encoder module. 
-            The encoder transforms input features of dimension <em>d<sub>in</sub></em> through a 
-            sequential pipeline: Linear projection → Layer Normalization → SiLU activation 
-            (σ(x) = x · sigmoid(x)) → Dropout regularization (p=0.1), producing encoded features 
-            of dimension <em>d<sub>out</sub></em>.
-        </p>
+        <div class="figure-caption"><strong>Figure 1.</strong> FeatureEncoder: MLP-based projection block.
+            Pipeline: Linear → LayerNorm → ReLU → Dropout.</div>
     </div>
+
 </body>
+
 </html>
