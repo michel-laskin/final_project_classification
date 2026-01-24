@@ -1,11 +1,11 @@
 # Zebrafish Toxicity Classification Pipeline
 
-End-to-end pipeline for classifying micro-toxicity exposure in zebrafish using optical signals and Temporal Convolutional Networks (TCN).
+End-to-end pipeline for classifying micro-toxicity exposure in zebrafish TCN architecture
 
 ## Key Features
-*   **Preprocessing**: Signal filtering and robust R-peak detection.
-*   **Feature Extraction**: Comprehensive HRV metrics, non-linear analysis, and windowed statistics.
-*   **Deep Learning**: TCN-based temporal modeling for accurate classification.
+*   **Preprocessing**: Signal filtering and R-peak detection.
+*   **Feature Extraction**: HRV metrics, non-linear analysis, and windowed statistics.
+*   **Deep Learning**: MLP feature encoder and TCN-based temporal modeling for classification.
 
 ## Project Structure
 ```
