@@ -461,24 +461,16 @@
         <div class="block-diagram" style="display: inline-block; padding: 25px 40px;">
             <div class="block-title">FusionModel</div>
             <div class="flow">
-                <!-- Parallel Encoders -->
+                <!-- Feature Groups -->
                 <div style="display: flex; gap: 10px; margin-bottom: 5px;">
                     <div class="node input" style="min-width: 70px; font-size: 8px;">Time-domain<br>features</div>
                     <div class="node input" style="min-width: 70px; font-size: 8px;">Frequency-domain<br>features</div>
                     <div class="node input" style="min-width: 70px; font-size: 8px;">Non-linear<br>features</div>
                 </div>
-                <div style="display: flex; gap: 10px;">
-                    <div class="arrow" style="width: 60px;">↓</div>
-                    <div class="arrow" style="width: 60px;">↓</div>
-                    <div class="arrow" style="width: 60px;">↓</div>
-                </div>
-                <div style="display: flex; gap: 10px; margin-bottom: 5px;">
-                    <div class="node block" style="min-width: 60px; font-size: 8px;">Encoder</div>
-                    <div class="node block" style="min-width: 60px; font-size: 8px;">Encoder</div>
-                    <div class="node block" style="min-width: 60px; font-size: 8px;">Encoder</div>
-                </div>
                 <div class="arrow">↓ ↓ ↓</div>
                 <div class="node block">Concatenate</div>
+                <div class="arrow">↓</div>
+                <div class="node block">FeatureEncoder</div>
                 <div class="arrow">↓</div>
                 <div class="node block">TemporalConvNet</div>
                 <div class="arrow">↓</div>
@@ -487,7 +479,7 @@
                 <div class="node output">Output</div>
             </div>
         </div>
-        <div class="figure-caption"><strong>Figure 3.</strong> FusionModel: parallel feature encoding → concatenation →
+        <div class="figure-caption"><strong>Figure 3.</strong> FusionModel: feature concatenation → single encoder →
             TCN → classification.</div>
     </div>
 

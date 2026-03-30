@@ -24,7 +24,7 @@ def extract_rr(signal, params):
     
     Returns RR intervals in milliseconds.
     """
-    peaks, _ = find_peaks(signal, distance=params["d"], prominence=params["p"])
+    peaks, _ = find_peaks(signal, distance=params.get("d"), prominence=params["p"])
     rr_locations = np.diff(peaks)
     rr = rr_locations * (1 / (params["hz"]) * 1000)
     return rr

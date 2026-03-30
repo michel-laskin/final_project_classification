@@ -36,7 +36,7 @@
 
         .block-diagram {
             border: 1px dashed #999;
-            padding: 15px;
+            padding: 20px 30px;
             position: relative;
             background: #fafafa;
             display: inline-block;
@@ -53,12 +53,33 @@
         }
 
         .node {
-            padding: 6px 12px;
+            padding: 8px 14px;
             font-size: 10px;
             text-align: center;
-            margin: 0 auto;
-            min-width: 80px;
+            min-width: 90px;
             border: 1px solid #666;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .node-name {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .node-details {
+            font-size: 8px;
+            color: #555;
+            line-height: 1.3;
+        }
+
+        .node-params {
+            font-size: 8px;
+            color: #666;
+            font-style: italic;
+            margin-top: 2px;
         }
 
         /* I/O boundaries - sage green */
@@ -95,20 +116,17 @@
         .arrow {
             text-align: center;
             color: #666;
-            font-size: 10px;
-            margin: 3px 0;
+            font-size: 14px;
+            margin: 0 8px;
+            display: flex;
+            align-items: center;
         }
 
         .flow {
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             align-items: center;
-        }
-
-        .dim-label {
-            font-size: 9px;
-            color: #888;
-            margin-top: 2px;
+            justify-content: center;
         }
     </style>
 </head>
@@ -117,24 +135,44 @@
 
     <!-- Feature Encoder Architecture -->
     <div class="figure">
-        <div class="block-diagram" style="padding: 25px 40px;">
+        <div class="block-diagram">
             <div class="block-title">FeatureEncoder</div>
             <div class="flow">
-                <div class="node input">Input</div>
-                <div class="arrow">↓</div>
-                <div class="node linear">Linear</div>
-                <div class="arrow">↓</div>
-                <div class="node norm">LayerNorm</div>
-                <div class="arrow">↓</div>
-                <div class="node activation">ReLU</div>
-                <div class="arrow">↓</div>
-                <div class="node regularization">Dropout</div>
-                <div class="arrow">↓</div>
-                <div class="node output">Output</div>
+                <div class="node input">
+                    <div class="node-name">Input</div>
+                    <div class="node-details">[B, S, 146]</div>
+                </div>
+                <div class="arrow">→</div>
+                <div class="node linear">
+                    <div class="node-name">Linear</div>
+                    <div class="node-details">146 → 16</div>
+                    <div class="node-params">2,352 params</div>
+                </div>
+                <div class="arrow">→</div>
+                <div class="node norm">
+                    <div class="node-name">LayerNorm</div>
+                    <div class="node-details">16 → 16</div>
+                    <div class="node-params">32 params</div>
+                </div>
+                <div class="arrow">→</div>
+                <div class="node activation">
+                    <div class="node-name">ReLU</div>
+                    <div class="node-details">16 → 16</div>
+                </div>
+                <div class="arrow">→</div>
+                <div class="node regularization">
+                    <div class="node-name">Dropout</div>
+                    <div class="node-details">16 → 16</div>
+                </div>
+                <div class="arrow">→</div>
+                <div class="node output">
+                    <div class="node-name">Output</div>
+                    <div class="node-details">[B, S, 16]</div>
+                </div>
             </div>
         </div>
         <div class="figure-caption"><strong>Figure 1.</strong> FeatureEncoder: MLP-based projection block.
-            Pipeline: Linear → LayerNorm → ReLU → Dropout.</div>
+            Pipeline: Linear → LayerNorm → ReLU → Dropout. Total learnable parameters: 2,384.</div>
     </div>
 
 </body>

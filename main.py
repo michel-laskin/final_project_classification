@@ -49,13 +49,12 @@ class ZebrafishPipeline:
         # Default configuration
         self.config = {
             # Signal processing
-            "sampling_freq": 40,  # Zebrafish data is sampled at 40 Hz
+            "sampling_freq": 40,  
             "low_threshold": 0.5,
             "high_threshold": 5.0,
             "filter_order": 4,
             
             # Peak detection params for extract_rr
-            "d": 12,  # min distance between peaks (samples) = 0.3s * 40Hz
             "p": 0.1,  # prominence threshold
             "hz": 40,  # sampling frequency
             
@@ -75,17 +74,17 @@ class ZebrafishPipeline:
             "input_dims": None,  # Will be set after feature extraction
             
             # Model architecture
-            "embedding_dim": 16,  # Reduced from 32
-            "tcn_channels": [16, 32],  # Simplified: 2 layers, fewer channels
+            "embedding_dim": 16,  
+            "tcn_channels": [16, 32], 
             "tcn_kernel_size": 3,
-            "dropout": 0.5,  # Increased dropout
+            "dropout": 0.5, 
             "num_classes": 2,
             
             # Training
             "batch_size": 32,
             "epochs": 100,
-            "learning_rate": 0.0003,  # Slower learning rate
-            "weight_decay": 0.05,  # Stronger L2 regularization
+            "learning_rate": 0.0003,
+            "weight_decay": 0.05,
             "group_lasso_lambda": 0.01,  # Group lasso regularization strength
             "early_stopping_patience": 20,
             
