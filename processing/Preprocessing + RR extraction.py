@@ -31,7 +31,11 @@ DEFAULT_PARAMS = {
     # R-Peak Detection
     "min_distance_samples": None,  # Will be calculated dynamically
     "peak_prominence": 0.1,  # Can be adjusted per signal
-    "min_rr_sec_zebrafish": 0.15
+    "min_rr_sec_zebrafish": 0.15,
+    
+    # RR Interval Output
+    "save_rr_intervals": True,  # Save RR interval vectors to NPY
+    "save_rr_summary": True  # Save summary report of all RR intervals
 }
 
 # OVERRIDE DICTIONARY - Specify custom parameters for specific signals
@@ -60,6 +64,19 @@ def apply_gaussian_filter(data, sigma):
     """Apply Gaussian filter."""
     return gaussian_filter1d(data, sigma=sigma)
 
+
+def save_rr_intervals_to_npy(rr_intervals, output_dir, larva_name):
+    """
+    Save RR interval vector to NPY file.
+    
+    Returns:
+        Path to saved NPY file
+    """
+    npy_filename = f"{larva_name}_RR_intervals.npy"
+    npy_path = os.path.join(output_dir, npy_filename)
+    
+    np.save(npy_path, rr_intervals)
+    return npy_path
 
 def filter_signal(raw_signal, params):
     """
@@ -320,6 +337,11 @@ def process_single_file(filepath, class_name, larva_name, params, output_dir):
         output_path = os.path.join(output_dir, html_filename)
         fig.write_html(output_path)
         
+        # Save RR intervals to NPY if enabled
+        rr_npy_path = None
+        if final_params.get("save_rr_intervals", True) and len(rr_intervals) > 0:
+            rr_npy_path = save_rr_intervals_to_npy(rr_intervals, output_dir, larva_name)
+        
         # Print summary
         print(f"  ✓ {larva_name}: {len(peaks)} peaks detected, {len(rr_intervals)} RR intervals extracted")
         
@@ -330,7 +352,8 @@ def process_single_file(filepath, class_name, larva_name, params, output_dir):
             'num_peaks': len(peaks),
             'num_rr_intervals': len(rr_intervals),
             'rr_intervals': rr_intervals,
-            'output_html': output_path
+            'output_html': output_path,
+            'output_npy': rr_npy_path
         }
         
     except Exception as e:
@@ -459,18 +482,45 @@ def process_all_signals(dataset_root, output_root="Processing results"):
         class_output_path = os.path.join(output_path, class_folder)
         if os.path.isdir(class_output_path):
             if class_folder.lower() == "control":
-                # For control folder, count HTML files recursively
+                # For control folder, count files recursively
                 total_html = 0
+                total_npy = 0
                 for subdir in os.listdir(class_output_path):
                     subdir_path = os.path.join(class_output_path, subdir)
                     if os.path.isdir(subdir_path):
                         html_count = len([f for f in os.listdir(subdir_path) if f.endswith('.html')])
+                        npy_count = len([f for f in os.listdir(subdir_path) if f.endswith('_RR_intervals.npy')])
                         total_html += html_count
-                        print(f"  • {class_folder}/{subdir}: {html_count} HTML files")
-                print(f"  • {class_folder} (total): {total_html} HTML files")
+                        total_npy += npy_count
+                        print(f"  • {class_folder}/{subdir}: {html_count} HTML, {npy_count} NPY files")
+                print(f"  • {class_folder} (total): {total_html} HTML, {total_npy} NPY files")
             else:
-                num_files = len([f for f in os.listdir(class_output_path) if f.endswith('.html')])
-                print(f"  • {class_folder}: {num_files} HTML files")
+                num_html = len([f for f in os.listdir(class_output_path) if f.endswith('.html')])
+                num_npy = len([f for f in os.listdir(class_output_path) if f.endswith('_RR_intervals.npy')])
+                print(f"  • {class_folder}: {num_html} HTML, {num_npy} NPY files")
+    
+    # Save summary report of all RR intervals if enabled
+    if DEFAULT_PARAMS.get("save_rr_summary", True) and results_summary:
+        summary_df_list = []
+        for result in results_summary:
+            if result['num_rr_intervals'] > 0:
+                rr_data = {
+                    'Class': result['class'],
+                    'Larva': result['larva'],
+                    'Num_Peaks': result['num_peaks'],
+                    'Num_RR_Intervals': result['num_rr_intervals'],
+                    'Mean_RR_ms': np.mean(result['rr_intervals']),
+                    'Std_RR_ms': np.std(result['rr_intervals']),
+                    'Min_RR_ms': np.min(result['rr_intervals']),
+                    'Max_RR_ms': np.max(result['rr_intervals'])
+                }
+                summary_df_list.append(rr_data)
+        
+        if summary_df_list:
+            summary_df = pd.DataFrame(summary_df_list)
+            summary_path = os.path.join(output_path, "RR_intervals_summary.csv")
+            summary_df.to_csv(summary_path, index=False)
+            print(f"\nSummary report saved to: {summary_path}")
     
     return results_summary
 
