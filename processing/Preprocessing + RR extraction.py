@@ -63,9 +63,18 @@ OVERRIDE_PARAMS = {
         "peak_height": 1350,
         "gaussian_sigma": 2.5
     },
+
     "1_Isoproterenol 10 µM/Larva 11": {
-        "peak_height": 1425,
-        "gaussian_sigma": 3
+        "local_height_windows": [
+        (34.5, 35, 1500),
+        (56, 58, 1570),
+        (160, 161.8, 1700),
+        (252, 255, 1280),
+        (282, 284, 1670)
+        ],
+        "cut_segment_start_sec": 80.45,
+        "cut_segment_end_sec": 82.10,
+        "gaussian_sigma": 2.65
     },
 
     "2_Atropine 1 µM/Larva 12": {
@@ -121,6 +130,13 @@ OVERRIDE_PARAMS = {
 
      "3_Propranolol 10 µM/Larva 08": {
         "peak_height": 1600
+    },
+
+    "3_Propranolol 10 µM/Larva 20": {
+    "local_height_windows": [
+        (162, 164, 1000),
+        (234, 239, 900)
+    ]
     },
 
     "3_Propranolol 100 µM/Larva 01": {
@@ -279,7 +295,9 @@ OVERRIDE_PARAMS = {
     },
 
     "Control/7_Control/Larva 09": {
-        "peak_height": 1100
+        "peak_height": 1100,
+        "cut_segment_start_sec": 122.22,
+        "cut_segment_end_sec": 123.8
     },
 
     "Control/7_Control/Larva 17": {
