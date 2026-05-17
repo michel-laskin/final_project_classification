@@ -1,0 +1,173 @@
+{
+  "name": "testing",
+  "objective_type": "val_f1",
+  "total_trials": 5,
+  "created_at": "2026-05-11T02:23:04.192014",
+  "search_space": {
+    "hrv_window_size": {
+      "type": "categorical",
+      "default": 200,
+      "choices": [
+        100,
+        150,
+        200,
+        250,
+        300,
+        350,
+        400
+      ],
+      "enabled": true,
+      "group": "Windowing",
+      "description": "Number of RR intervals per window"
+    },
+    "hrv_overlap_ratio": {
+      "type": "float",
+      "default": 0.9,
+      "low": 0.5,
+      "high": 0.95,
+      "step": 0.05,
+      "enabled": true,
+      "group": "Windowing",
+      "description": "Overlap ratio between consecutive windows"
+    },
+    "embedding_dim": {
+      "type": "categorical",
+      "default": 32,
+      "choices": [
+        16,
+        32,
+        48,
+        64
+      ],
+      "enabled": true,
+      "group": "Encoder",
+      "description": "Output dimension of the feature encoder"
+    },
+    "encoder_num_layers": {
+      "type": "int",
+      "default": 1,
+      "low": 0,
+      "high": 2,
+      "enabled": true,
+      "group": "Encoder",
+      "description": "Number of hidden layers in encoder (0=direct projection)"
+    },
+    "encoder_hidden_dim": {
+      "type": "categorical",
+      "default": 64,
+      "choices": [
+        32,
+        64,
+        96,
+        128
+      ],
+      "enabled": true,
+      "group": "Encoder",
+      "description": "Width of hidden layers in encoder"
+    },
+    "encoder_activation": {
+      "type": "categorical",
+      "default": "silu",
+      "choices": [
+        "relu",
+        "silu",
+        "gelu"
+      ],
+      "enabled": true,
+      "group": "Encoder",
+      "description": "Activation function in encoder"
+    },
+    "tcn_num_blocks": {
+      "type": "int",
+      "default": 3,
+      "low": 1,
+      "high": 4,
+      "enabled": true,
+      "group": "TCN",
+      "description": "Number of temporal blocks in TCN"
+    },
+    "tcn_channel_base": {
+      "type": "categorical",
+      "default": 32,
+      "choices": [
+        16,
+        32,
+        48,
+        64
+      ],
+      "enabled": true,
+      "group": "TCN",
+      "description": "Base channel width for TCN blocks"
+    },
+    "tcn_channel_growth": {
+      "type": "categorical",
+      "default": "double",
+      "choices": [
+        "constant",
+        "double"
+      ],
+      "enabled": true,
+      "group": "TCN",
+      "description": "How channels grow across TCN blocks"
+    },
+    "tcn_kernel_size": {
+      "type": "int",
+      "default": 3,
+      "low": 2,
+      "high": 7,
+      "enabled": true,
+      "group": "TCN",
+      "description": "Kernel size for temporal convolutions"
+    },
+    "learning_rate": {
+      "type": "log_float",
+      "default": 0.0003,
+      "low": 1e-05,
+      "high": 0.01,
+      "enabled": true,
+      "group": "Training",
+      "description": "Adam optimizer learning rate"
+    },
+    "weight_decay": {
+      "type": "log_float",
+      "default": 0.05,
+      "low": 0.0001,
+      "high": 0.1,
+      "enabled": true,
+      "group": "Training",
+      "description": "L2 regularization strength"
+    },
+    "dropout": {
+      "type": "float",
+      "default": 0.5,
+      "low": 0.1,
+      "high": 0.7,
+      "step": 0.05,
+      "enabled": true,
+      "group": "Training",
+      "description": "Dropout probability"
+    },
+    "batch_size": {
+      "type": "categorical",
+      "default": 32,
+      "choices": [
+        16,
+        32,
+        64
+      ],
+      "enabled": true,
+      "group": "Training",
+      "description": "Training batch size"
+    },
+    "group_lasso_lambda": {
+      "type": "log_float",
+      "default": 0.01,
+      "low": 0.0001,
+      "high": 0.1,
+      "enabled": true,
+      "group": "Training",
+      "description": "Group lasso regularization strength"
+    }
+  },
+  "state": "created"
+}
